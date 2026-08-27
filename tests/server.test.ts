@@ -8,6 +8,29 @@ import {
   ExtractionIncompleteError,
   ExtractionTimeoutError,
 } from '../src/extract.js'
+import { extractionEmpty, scrapeFailures } from '../src/metrics.js'
+
+type CounterLike = {
+  get: () => Promise<{ values: { value: number; labels: Partial<Record<string, string | number>> }[] }>
+}
+
+// The registry's counters are module-level and shared across every test in
+// this file (metrics.ts's one intentional exception to "no module-level
+// mutable state" -- see its own doc comment), so these read a value rather
+// than asserting an absolute count: a test compares a counter's value before
+// and after its own action, which holds regardless of what earlier tests
+// already added to the same counter.
+async function counterValue(counter: CounterLike, labels?: Record<string, string>): Promise<number> {
+  const m = await counter.get()
+  if (!labels) return m.values[0]?.value ?? 0
+  const entry = m.values.find((v) => Object.entries(labels).every(([k, val]) => v.labels[k] === val))
+  return entry?.value ?? 0
+}
+
+async function counterTotal(counter: CounterLike): Promise<number> {
+  const m = await counter.get()
+  return m.values.reduce((sum, v) => sum + v.value, 0)
+}
 
 const cfg = loadConfig({})
 const fakePool = { acquire: async () => { throw new Error('unused') }, liveContexts: () => 1, close: async () => {} }
@@ -150,6 +173,79 @@ describe('negative caching', () => {
     const res = await app.inject({ method: 'GET', url: '/v1/track/abc' })
 
     expect(res.statusCode).toBe(200)
+  })
+})
+
+describe('stale-on-error masking (fix round 2)', () => {
+  // withCache's stale-on-error fallback (cache.ts) used to swallow a
+  // produce() failure entirely whenever a prior cache entry existed to fall
+  // back on -- so for any entity with a positive cache entry, a real
+  // ExtractionEmptyError/ExtractionIncompleteError/NotFoundError never
+  // reached this file's catch block at all: no 404/502, and critically, no
+  // extractionEmpty.inc() or scrapeFailures.inc(). Given a 30-day track TTL
+  // with 2x physical retention, the canary this whole design leans on could
+  // read zero for up to 60 days of a real Spotify-redesign breakage on
+  // already-cached entities. A test that only checks 200 + the stale header
+  // (like the pre-existing "serves stale with a header" test above) cannot
+  // catch this -- it passed before this fix and still passes after, since
+  // the *response* never changed. Only reading the counters proves it.
+  it('increments extractionEmpty and scrapeFailures when a stale value masks an ExtractionEmptyError', async () => {
+    const store = new MemoryStore()
+    let fail = false
+    const app = server(async () => {
+      if (fail) throw new ExtractionEmptyError('nothing')
+      return TRACK
+    }, store)
+
+    await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    fail = true
+    const raw = JSON.parse((await store.get('v1:track:abc'))!)
+    raw.storedAt = 0
+    await store.set('v1:track:abc', JSON.stringify(raw), 9999)
+
+    const before = {
+      empty: await counterValue(extractionEmpty),
+      failures: await counterValue(scrapeFailures, { reason: 'extraction_empty' }),
+    }
+
+    const res = await app.inject({ method: 'GET', url: '/v1/track/abc' })
+
+    const after = {
+      empty: await counterValue(extractionEmpty),
+      failures: await counterValue(scrapeFailures, { reason: 'extraction_empty' }),
+    }
+
+    // The response is unchanged by this fix -- still usable data, still
+    // labelled stale -- that's the whole point of stale-on-error.
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-cache']).toBe('stale')
+    // But the failure that caused the fallback is no longer invisible.
+    expect(after.empty).toBe(before.empty + 1)
+    expect(after.failures).toBe(before.failures + 1)
+  })
+
+  it('does not touch scrapeFailures for a masked NotFoundError, matching the un-masked 404 path', async () => {
+    const store = new MemoryStore()
+    let fail = false
+    const app = server(async () => {
+      if (fail) throw new NotFoundError('nope')
+      return TRACK
+    }, store)
+
+    await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    fail = true
+    const raw = JSON.parse((await store.get('v1:track:abc'))!)
+    raw.storedAt = 0
+    await store.set('v1:track:abc', JSON.stringify(raw), 9999)
+
+    const before = { failures: await counterTotal(scrapeFailures), empty: await counterValue(extractionEmpty) }
+    const res = await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    const after = { failures: await counterTotal(scrapeFailures), empty: await counterValue(extractionEmpty) }
+
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-cache']).toBe('stale')
+    expect(after.failures).toBe(before.failures)
+    expect(after.empty).toBe(before.empty)
   })
 })
 

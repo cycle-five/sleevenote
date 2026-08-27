@@ -29,8 +29,10 @@ describe('withCache', () => {
 
     const a = await withCache({ store, key: 'k', ttlSeconds: 60, now: 1000, produce })
     expect(a.hit).toBe('miss')
+    expect(a.staleError).toBeUndefined()
     const b = await withCache({ store, key: 'k', ttlSeconds: 60, now: 1001, produce })
     expect(b.hit).toBe('fresh')
+    expect(b.staleError).toBeUndefined()
     expect(calls).toBe(1)
     expect(b.value).toEqual({ n: 1 })
   })
@@ -46,6 +48,26 @@ describe('withCache', () => {
     })
     expect(later.hit).toBe('stale')
     expect(later.value).toEqual({ n: 1 })
+  })
+
+  // Task 6 fix round 2: withCache used to swallow produce()'s error entirely
+  // once a fallback entry existed to serve instead -- a caller had no way to
+  // know production had failed at all, only that it got a (possibly very
+  // stale) value. `staleError` restores that visibility without changing
+  // what's returned as `value`: the caller decides what to do with it (Task
+  // 6's server.ts increments its failure counters, still returns 200).
+  it('surfaces the swallowed error as staleError when serving a stale fallback', async () => {
+    const store = new MemoryStore()
+    await withCache({ store, key: 'k', ttlSeconds: 60, now: 1000, produce: async () => ({ n: 1 }) })
+
+    const thrown = new Error('scrape failed')
+    const later = await withCache({
+      store, key: 'k', ttlSeconds: 60, now: 1_000_000,
+      produce: async () => { throw thrown },
+    })
+    expect(later.hit).toBe('stale')
+    expect(later.value).toEqual({ n: 1 })
+    expect(later.staleError).toBe(thrown)
   })
 
   it('propagates the error when produce throws and nothing is cached', async () => {
@@ -130,9 +152,17 @@ describe('withCache', () => {
 
     expect(waiterResult.hit).toBe('miss')
     expect(waiterResult.value).toEqual({ n: 99 })
+    expect(waiterResult.staleError).toBeUndefined()
     // The holder's own produce() failed, but the entry it finds afterward
     // was just written by the waiter and is genuinely fresh.
     expect(holderResult.hit).toBe('fresh')
     expect(holderResult.value).toEqual({ n: 99 })
+    // Task 6 fix round 2: the holder's OWN produce() genuinely failed, even
+    // though the value it ends up serving is fresh (written by the waiter,
+    // not by it) -- that failure is real and worth a caller's attention
+    // regardless of which concurrent write happened to win the race, so
+    // staleError is set here too, not only in the hit === 'stale' case.
+    expect(holderResult.staleError).toBeInstanceOf(Error)
+    expect((holderResult.staleError as Error).message).toBe('holder failed')
   })
 })

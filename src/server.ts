@@ -42,6 +42,41 @@ function negativeKey(kind: EntityKind, id: string): string {
   return `${cacheKey(kind, id)}:absent`
 }
 
+// Shared between the direct error-mapping catch block below and the
+// stale-on-error masking case in `handleEntity` (fix round 2): `withCache`'s
+// stale-on-error fallback serves an old value instead of surfacing a
+// produce() failure whenever an existing entry is there to serve, so the
+// SAME failure can reach this file two different ways -- as a thrown error,
+// or as `CacheResult.staleError` alongside an otherwise-200 response. Both
+// must record the same counters, or the extraction-empty canary (and the
+// rest of scrapeFailures) goes dark for exactly the entities that have a
+// prior cache entry -- which, for a 30-day track TTL with 2x physical
+// retention, is most of them within days of a real breakage. NotFoundError
+// intentionally records nothing here: a 404 for a genuinely nonexistent or
+// mistyped id is normal traffic, not a scrape failure, and folding it into a
+// failure-rate metric would make routine bad input look like scraper
+// breakage on a dashboard meant to alert on exactly that.
+function recordFailureMetrics(err: unknown): void {
+  if (err instanceof NotFoundError) return
+  if (err instanceof ExtractionEmptyError) {
+    // The canary: this counter is what makes "extraction stopped matching
+    // Spotify's page" loud instead of silently returning nothing, which is
+    // how the prior art this project replaces died.
+    extractionEmpty.inc()
+    scrapeFailures.inc({ reason: 'extraction_empty' })
+    return
+  }
+  if (err instanceof ExtractionIncompleteError) {
+    scrapeFailures.inc({ reason: 'extraction_incomplete' })
+    return
+  }
+  if (err instanceof ExtractionTimeoutError) {
+    scrapeFailures.inc({ reason: 'timeout' })
+    return
+  }
+  scrapeFailures.inc({ reason: 'unknown' })
+}
+
 /**
  * `buildServer` takes every dependency as an argument -- no Redis, no
  * browser, no network is reachable from this module, so the whole HTTP
@@ -70,7 +105,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       // scrapeFailures or extractionEmpty.
       reply.header('X-Cache', 'negative')
       reply.code(404)
-      return { error: 'not_found', id }
+      return { error: 'not_found', id, message: 'previously confirmed absent' }
     }
 
     try {
@@ -92,6 +127,14 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         produce: () => timedExtract(kind, id),
         produceBudgetMs: cfg.produceBudgetMs,
       })
+      // withCache's stale-on-error fallback can serve a value while
+      // discarding the produce() failure that caused it to fall back at
+      // all -- see recordFailureMetrics's doc comment. That failure is real
+      // even though the caller here gets usable data and a 200; record it
+      // the same way a thrown error would be, without changing the response.
+      if (result.staleError !== undefined) {
+        recordFailureMetrics(result.staleError)
+      }
       reply.header('X-Cache', result.hit)
       cacheHits.inc({ type: kind, result: result.hit })
       return result.value
@@ -104,6 +147,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       // distinction (a produceBudgetMs backstop rarely expected to fire --
       // see extract.ts's withBudget), mapped to 504 rather than folded into
       // the generic 502 below.
+      recordFailureMetrics(err)
       if (err instanceof NotFoundError) {
         // Negative-cache the id so a repeat request for something that
         // genuinely doesn't exist doesn't re-run a full extraction on every
@@ -113,11 +157,6 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         return { error: 'not_found', id, message: err.message }
       }
       if (err instanceof ExtractionEmptyError) {
-        // The canary: this counter is what makes "extraction stopped
-        // matching Spotify's page" loud instead of silently returning
-        // nothing, which is how the prior art this project replaces died.
-        extractionEmpty.inc()
-        scrapeFailures.inc({ reason: 'extraction_empty' })
         reply.code(502)
         return { error: 'extraction_empty', id, message: err.message }
       }
@@ -126,16 +165,13 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         // after produce() resolves, and this rejected, so there is nothing
         // extra to do here to satisfy that guarantee; it falls out of the
         // cache layer's own structure.
-        scrapeFailures.inc({ reason: 'extraction_incomplete' })
         reply.code(502)
         return { error: 'extraction_incomplete', id, message: err.message }
       }
       if (err instanceof ExtractionTimeoutError) {
-        scrapeFailures.inc({ reason: 'timeout' })
         reply.code(504)
         return { error: 'timeout', id, message: err.message }
       }
-      scrapeFailures.inc({ reason: 'unknown' })
       reply.code(502)
       return { error: 'internal', id, message: err instanceof Error ? err.message : String(err) }
     }

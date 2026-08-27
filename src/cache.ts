@@ -40,6 +40,23 @@ function isFresh(entry: Entry<unknown>, ttlSeconds: number, now: number): boolea
   return now - entry.storedAt < ttlSeconds
 }
 
+// `staleError` is set exactly when a value is being served ONLY because
+// produce() threw and an existing entry happened to be there to fall back
+// on (both the direct stale-on-error path and the lock-wait-timeout
+// fallback landing on this same catch branch) -- never on a genuine cache
+// hit (the early-return fresh checks in `withCache` never call
+// `produceAndCache` at all) and never on a clean miss (produce() succeeded,
+// so there's nothing to report). Task 6 fix round 2: this field exists
+// because `withCache` used to swallow that error entirely once a fallback
+// entry existed, which meant NotFoundError/ExtractionEmptyError/
+// ExtractionIncompleteError never reached a caller's error-mapping code for
+// any entity with a prior cache entry -- silencing the extraction-empty
+// canary for exactly the entities a Spotify redesign is most likely to have
+// already cached. The *value* returned is unchanged by this field: serving
+// stale is still correct behaviour, this only restores the caller's ability
+// to ALSO observe that production failed.
+export type CacheResult<T> = { value: T; hit: 'fresh' | 'stale' | 'miss'; staleError?: unknown }
+
 /**
  * Run `produce`, cache the result, and report it as a miss -- unless it
  * throws, in which case an existing entry is served instead of the error, if
@@ -51,7 +68,10 @@ function isFresh(entry: Entry<unknown>, ttlSeconds: number, now: number): boolea
  * while we were still failing. `hit` feeds cache-hit-rate observability, so
  * it must reflect what's actually true, not just "produce() threw" -- an
  * entry found here is labelled 'fresh' or 'stale' by the same freshness
- * check as everywhere else, never assumed.
+ * check as everywhere else, never assumed. `staleError` is set in both
+ * sub-cases (see its own doc comment) -- a real produce() failure happened
+ * either way, and a caller that wants to alert on it shouldn't have that
+ * signal depend on exactly which concurrent caller's write won a race.
  */
 async function produceAndCache<T>(
   store: CacheStore,
@@ -59,7 +79,7 @@ async function produceAndCache<T>(
   ttlSeconds: number,
   now: number,
   produce: () => Promise<T>,
-): Promise<{ value: T; hit: 'fresh' | 'stale' | 'miss' }> {
+): Promise<CacheResult<T>> {
   try {
     const value = await produce()
     const entry: Entry<T> = { value, storedAt: now }
@@ -68,7 +88,11 @@ async function produceAndCache<T>(
   } catch (err) {
     const found = await readEntry<T>(store, key)
     if (found) {
-      return { value: found.value, hit: isFresh(found, ttlSeconds, now) ? 'fresh' : 'stale' }
+      return {
+        value: found.value,
+        hit: isFresh(found, ttlSeconds, now) ? 'fresh' : 'stale',
+        staleError: err,
+      }
     }
     throw err
   }
@@ -97,7 +121,7 @@ export async function withCache<T>(opts: {
   now: number
   produce: () => Promise<T>
   produceBudgetMs?: number
-}): Promise<{ value: T; hit: 'fresh' | 'stale' | 'miss' }> {
+}): Promise<CacheResult<T>> {
   const { store, key, ttlSeconds, now, produce } = opts
   const produceBudgetMs = opts.produceBudgetMs ?? DEFAULT_PRODUCE_BUDGET_MS
   const lockTtlSeconds = Math.ceil(produceBudgetMs / 1000)
