@@ -1,7 +1,13 @@
 import type { Page, Response } from 'playwright'
 import type { Pool } from './browser.js'
 import type { Config } from './config.js'
-import { normalizeAlbum, normalizePlaylist, normalizeTrack } from './normalize.js'
+import {
+  albumTotalCount,
+  normalizeAlbum,
+  normalizePlaylist,
+  normalizeTrack,
+  playlistTotalCount,
+} from './normalize.js'
 import type { Album, Playlist, Recorded, Track } from './types.js'
 
 // Distinct on purpose: a 404 means the entity doesn't exist. This means
@@ -12,6 +18,18 @@ import type { Album, Playlist, Recorded, Track } from './types.js'
 // it populate the cache.
 export class NotFoundError extends Error {}
 export class ExtractionEmptyError extends Error {}
+
+// Zero tracks is the extreme, unambiguous case of the same underlying
+// failure: extraction stopped matching Spotify's page. This one covers the
+// case a bare "tracks.length === 0" check can't see -- a partial recovery
+// (a scroll that stopped early, a dropped page) that still returns *some*
+// tracks and so still looks plausible to a caller that never checks the
+// declared total against what actually came back. Fix round 1 found that
+// nothing did. Kept distinct from ExtractionEmptyError, for the same reason
+// that one is distinct from NotFoundError: "recovered fewer tracks than
+// declared" and "recovered zero tracks" are different diagnoses even though
+// both are the same class of bug.
+export class ExtractionIncompleteError extends Error {}
 
 const SCROLL_MAX_ITERATIONS = 200
 const SCROLL_STEP_DELAY_MS = 350
@@ -138,6 +156,31 @@ async function runExtraction(
       throw new ExtractionEmptyError(
         `${kind} ${id} navigated successfully but yielded zero tracks -- extraction likely stopped matching Spotify's page`,
       )
+    }
+    // The zero-tracks check above can't see a *partial* recovery -- some
+    // tracks came back, just not all of them (a scroll that stopped early,
+    // a page that didn't fire). Spotify reports its own declared total
+    // alongside the entity (`content.totalCount` for a playlist,
+    // `tracksV2.totalCount` for an album; see normalize.ts), so compare
+    // against it rather than trusting "non-empty" to mean "complete". A
+    // partial playlist is exactly what silently truncated during Task 1 --
+    // it looks like a perfectly valid, cacheable result to anyone who
+    // doesn't check.
+    if (result.type === 'album') {
+      const declared = albumTotalCount(recorded, id)
+      if (declared !== null && result.tracks.length !== declared) {
+        throw new ExtractionIncompleteError(
+          `album ${id} recovered ${result.tracks.length} of ${declared} declared tracks -- extraction was incomplete`,
+        )
+      }
+    }
+    if (result.type === 'playlist') {
+      const declared = playlistTotalCount(recorded, id)
+      if (declared !== null && result.tracks.length !== declared) {
+        throw new ExtractionIncompleteError(
+          `playlist ${id} recovered ${result.tracks.length} of ${declared} declared tracks -- extraction was incomplete`,
+        )
+      }
     }
     return result
   } finally {

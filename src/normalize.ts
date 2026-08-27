@@ -178,7 +178,15 @@ export function normalizeTrack(recorded: Recorded[], id: string): Track | null {
 
 // --- album ---------------------------------------------------------------
 
-export function normalizeAlbum(recorded: Recorded[], id: string): Album | null {
+/**
+ * The one `data.albumUnion` that is this album (not the merch-widget
+ * response sharing the same key, not a different album), by the same rules
+ * `normalizeAlbum` uses. Factored out so `albumTotalCount` can read
+ * `tracksV2.totalCount` off the same entity `normalizeAlbum` reads its
+ * tracks from, without re-deriving "which response is the real one" a
+ * second time.
+ */
+function findAlbumUnion(recorded: Recorded[], id: string): Record<string, unknown> | null {
   for (const data of pathfinderData(recorded)) {
     const albumUnion = asRecord(data['albumUnion'])
     if (!albumUnion) continue
@@ -188,47 +196,88 @@ export function normalizeAlbum(recorded: Recorded[], id: string): Album | null {
     const tracksV2 = asRecord(albumUnion['tracksV2'])
     if (!tracksV2) continue
     if (idFromUri(albumUnion['uri']) !== id) continue
-
-    const name = asString(albumUnion['name'])
-    if (!name) return null
-
-    const items = asArray(tracksV2['items']) ?? []
-    const tracks: Track[] = []
-    for (const raw of items) {
-      const rec = asRecord(raw)
-      const trackNode = rec ? rec['track'] : null
-      const track = trackFromNode(trackNode, 'duration')
-      if (track) tracks.push(track)
-    }
-
-    return {
-      id,
-      type: 'album',
-      name,
-      artists: artistsFromItems(albumUnion['artists']),
-      image: bestImage(albumUnion['coverArt']),
-      url: `https://open.spotify.com/album/${id}`,
-      tracks,
-    }
+    return albumUnion
   }
   return null
 }
 
+export function normalizeAlbum(recorded: Recorded[], id: string): Album | null {
+  const albumUnion = findAlbumUnion(recorded, id)
+  if (!albumUnion) return null
+
+  const name = asString(albumUnion['name'])
+  if (!name) return null
+
+  const tracksV2 = asRecord(albumUnion['tracksV2'])
+  const items = tracksV2 ? (asArray(tracksV2['items']) ?? []) : []
+  const tracks: Track[] = []
+  for (const raw of items) {
+    const rec = asRecord(raw)
+    const trackNode = rec ? rec['track'] : null
+    const track = trackFromNode(trackNode, 'duration')
+    if (track) tracks.push(track)
+  }
+
+  return {
+    id,
+    type: 'album',
+    name,
+    artists: artistsFromItems(albumUnion['artists']),
+    image: bestImage(albumUnion['coverArt']),
+    url: `https://open.spotify.com/album/${id}`,
+    tracks,
+  }
+}
+
+/**
+ * The album's declared track count (`tracksV2.totalCount`), independent of
+ * how many tracks `normalizeAlbum` actually recovered. A caller compares
+ * this against `tracks.length` to detect a partial recovery -- there is no
+ * pagination for albums per `docs/captured-shapes.md`, so in practice a
+ * mismatch here means the single response we got was itself incomplete or
+ * malformed, not that further pages were missed. Returns `null` if the
+ * entity itself can't be found, or if `totalCount` is absent/non-numeric.
+ */
+export function albumTotalCount(recorded: Recorded[], id: string): number | null {
+  const albumUnion = findAlbumUnion(recorded, id)
+  if (!albumUnion) return null
+  const tracksV2 = asRecord(albumUnion['tracksV2'])
+  return tracksV2 ? asNumber(tracksV2['totalCount']) : null
+}
+
 // --- playlist --------------------------------------------------------------
 
-export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | null {
-  const targetUri = `spotify:playlist:${id}`
-  const candidates = pathfinderData(recorded)
+/**
+ * Every `data.playlistV2` recorded, decoys and permission fragments
+ * included -- the raw candidate set both `findPlaylistEntity` and
+ * `normalizePlaylist`'s page-gathering loop filter from.
+ */
+function playlistCandidates(recorded: Recorded[]): Record<string, unknown>[] {
+  return pathfinderData(recorded)
     .map((data) => asRecord(data['playlistV2']))
     .filter((p): p is Record<string, unknown> => p !== null)
+}
 
-  // Entity-bearing response: the one where `name` is present and `uri`
-  // matches the requested id. NOT the first `__typename === "Playlist"` --
-  // a permissions-only fragment for this same playlist, with no name/uri/
-  // content, is fired first in every fixture.
-  const entity = candidates.find(
-    (p) => asString(p['name']) !== null && asString(p['uri']) === targetUri,
+/**
+ * The one entity-bearing `playlistV2` response: `name` present and `uri`
+ * matching the requested id. NOT the first `__typename === "Playlist"` -- a
+ * permissions-only fragment for this same playlist, with no name/uri/
+ * content, is fired first in every fixture. Factored out so
+ * `playlistTotalCount` can read `content.totalCount` off the same response
+ * `normalizePlaylist` reads `name`/`owner`/`image` from, rather than
+ * re-deriving the discriminator.
+ */
+function findPlaylistEntity(recorded: Recorded[], id: string): Record<string, unknown> | null {
+  const targetUri = `spotify:playlist:${id}`
+  return (
+    playlistCandidates(recorded).find(
+      (p) => asString(p['name']) !== null && asString(p['uri']) === targetUri,
+    ) ?? null
   )
+}
+
+export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | null {
+  const entity = findPlaylistEntity(recorded, id)
   if (!entity) return null
 
   const name = asString(entity['name'])
@@ -248,7 +297,7 @@ export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | 
   // page one; pages past the first carry no uri, so uri cannot be used to
   // find them. Concatenate items in pagingInfo.offset order.
   const pages: { offset: number; items: unknown[] }[] = []
-  for (const p of candidates) {
+  for (const p of playlistCandidates(recorded)) {
     const content = asRecord(p['content'])
     if (!content) continue
     const pagingInfo = asRecord(content['pagingInfo'])
@@ -279,4 +328,21 @@ export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | 
     url: `https://open.spotify.com/playlist/${id}`,
     tracks,
   }
+}
+
+/**
+ * The playlist's declared track count (`content.totalCount`, read off the
+ * entity-bearing response), independent of how many tracks
+ * `normalizePlaylist` actually recovered across all pages. A caller compares
+ * this against `tracks.length` to detect a partial scroll recovery -- the
+ * exact failure mode that silently truncated a playlist during Task 1,
+ * because a truncated playlist still looks like a completely valid one.
+ * Returns `null` if the entity itself can't be found, or if `totalCount` is
+ * absent/non-numeric.
+ */
+export function playlistTotalCount(recorded: Recorded[], id: string): number | null {
+  const entity = findPlaylistEntity(recorded, id)
+  if (!entity) return null
+  const content = asRecord(entity['content'])
+  return content ? asNumber(content['totalCount']) : null
 }
