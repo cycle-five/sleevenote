@@ -34,7 +34,9 @@
     "esbuild@0.28.2": true
   },
   "dependencies": {
+    "fastify": "^5.12.1",
     "ioredis": "^6.0.0",
-    "playwright": "^1.62.1"
+    "playwright": "^1.62.1",
+    "prom-client": "^15.1.3"
   }
 }
