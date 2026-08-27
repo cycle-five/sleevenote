@@ -47,7 +47,16 @@ type TestFaultHooks = { failNextContextCreations?: number }
 export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promise<Pool> {
   const browser: Browser = await chromium.launch()
 
-  let liveCount = 0
+  // Fix wave: every ContextRecord the pool currently owns -- whether idle in
+  // `free`, out on a lease, or queued to a waiter -- so `liveContexts()` can
+  // check each one's actual usability (`!page.isClosed()`) at call time
+  // instead of trusting a counter that only ever moved on creation/recycle.
+  // A page can crash independently of either of those (a renderer dying
+  // mid-request while its context sits `free`, untouched, until its next
+  // release), and a counter has no way to notice that; this does, because it
+  // re-checks the real `Page` object every time `liveContexts()` is called,
+  // not just when the pool itself last touched the record.
+  const allRecords = new Set<ContextRecord>()
   // Armed only after the initial pool fill below, so an injected failure
   // exercises the recycle path a test actually asked for rather than
   // silently consuming itself during createPool()'s own warm-up.
@@ -65,8 +74,9 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
       if (BLOCKED_RESOURCE_TYPES.has(type)) return route.abort()
       return route.continue()
     })
-    liveCount++
-    return { context, page, uses: 0 }
+    const record: ContextRecord = { context, page, uses: 0 }
+    allRecords.add(record)
+    return record
   }
 
   // A record lives in exactly one of three places at a time: `free`, handed
@@ -86,16 +96,17 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
   // recycled here, at release time, rather than left to accumulate whatever
   // a long-running page leaks (detached listeners, JS heap growth, etc.).
   //
-  // `liveCount` is decremented up front because the old context really is
-  // about to be closed regardless of what happens next; `createContext()`
-  // increments it again on success, so a clean recycle nets to zero change.
-  // If creation fails, the decrement is left standing -- that's not a bug to
-  // paper over, it's the truth: one fewer context now exists than a moment
-  // ago. A single transient failure (a momentary OOM, a renderer that
-  // crashed on startup) shouldn't cost the pool a permanent slot, though, so
-  // one retry is attempted before treating it as a real, unrecoverable loss.
+  // `record` is removed from `allRecords` up front because the old context
+  // really is about to be closed regardless of what happens next;
+  // `createContext()` adds its replacement back on success, so a clean
+  // recycle nets to zero change. If creation fails, the removal is left
+  // standing -- that's not a bug to paper over, it's the truth: one fewer
+  // context now exists than a moment ago. A single transient failure (a
+  // momentary OOM, a renderer that crashed on startup) shouldn't cost the
+  // pool a permanent slot, though, so one retry is attempted before treating
+  // it as a real, unrecoverable loss.
   async function recycle(record: ContextRecord): Promise<ContextRecord> {
-    liveCount--
+    allRecords.delete(record)
     // The old context may already be in a bad way (crashed page, etc.) --
     // that must not stop it from being replaced.
     await record.context.close().catch(() => {})
@@ -120,7 +131,13 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
 
     let returned: ContextRecord
     try {
-      returned = record.uses >= cfg.contextMaxUses ? await recycle(record) : record
+      // Fix wave: recycle on a crashed/closed page too, not only at the use
+      // budget. `record.uses >= cfg.contextMaxUses` alone left a context
+      // whose renderer crashed sitting in `free`, still handed out to the
+      // next `acquire()`, until it happened to also reach its use budget --
+      // which could be arbitrarily far in the future for a low-traffic
+      // deployment. `page.isClosed()` catches that regardless of use count.
+      returned = record.uses >= cfg.contextMaxUses || record.page.isClosed() ? await recycle(record) : record
     } catch (err) {
       if (closed) {
         // close() ran while recycle() was still in flight (Task 6 closes the
@@ -190,8 +207,24 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
       return makeLease(queued)
     },
 
+    // Fix wave: filtered by the same `page.isClosed()` predicate
+    // `releaseRecord` now recycles on, not a plain count of contexts ever
+    // created. Without the filter this could report a context as live for
+    // as long as it takes that context to next be released -- which is
+    // exactly how `/health` (`pool.liveContexts() >= 1`) kept answering
+    // "ok" while every request against a crashed context failed.
+    // Fix wave: filtered by the same `page.isClosed()` predicate
+    // `releaseRecord` now recycles on, not a plain count of contexts ever
+    // created. Without the filter this could report a context as live for
+    // as long as it takes that context to next be released -- which is
+    // exactly how `/health` (`pool.liveContexts() >= 1`) kept answering
+    // "ok" while every request against a crashed context failed.
     liveContexts(): number {
-      return liveCount
+      let live = 0
+      for (const record of allRecords) {
+        if (!record.page.isClosed()) live++
+      }
+      return live
     },
 
     async close(): Promise<void> {
@@ -206,7 +239,7 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
       // calling release(), say) -- so a leaked lease doesn't leak a
       // Chromium process past shutdown.
       await browser.close()
-      liveCount = 0
+      allRecords.clear()
     },
   }
 }

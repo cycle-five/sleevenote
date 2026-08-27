@@ -116,3 +116,42 @@ describe('createPool: a failed context recycle', () => {
     }
   })
 })
+
+// Fix wave, finding 4: releaseRecord only recycled at `uses >=
+// contextMaxUses`, and liveContexts() only counted contexts ever created,
+// not contexts still usable. A page that crashed independently -- while
+// sitting idle in `free`, untouched -- stayed in the free list (handed out
+// to the next acquire()) and kept counting toward liveContexts() until it
+// separately happened to also hit its use budget, which could be arbitrarily
+// far in the future. /health (`pool.liveContexts() >= 1`) would answer "ok"
+// the whole time.
+describe('createPool: a crashed page is recycled and stops counting as live immediately', () => {
+  it('drops liveContexts() the moment a page closes, and recycles on release regardless of use count', async () => {
+    // Pool size 1 so the same slot is guaranteed to cycle back on every
+    // acquire -- with a bigger pool, a healthy sibling context could mask
+    // the bug by satisfying the next acquire() instead.
+    const crashCfg = loadConfig({ POOL_SIZE: '1', CONTEXT_MAX_USES: '50' })
+    const crashPool = await createPool(crashCfg)
+    try {
+      expect(crashPool.liveContexts()).toBe(1)
+
+      const lease = await crashPool.acquire()
+      await lease.page.close() // simulates a crashed renderer while the lease is still held
+      expect(crashPool.liveContexts()).toBe(0) // the pool's one context is no longer usable
+
+      // uses is only 1, far under contextMaxUses (50) -- must still recycle
+      // because the page itself is closed, not because of the use count.
+      await expect(lease.release()).resolves.toBeUndefined()
+      expect(crashPool.liveContexts()).toBe(1)
+
+      // And the replacement handed out next must actually be usable, not
+      // the crashed page returned as-is.
+      const lease2 = await crashPool.acquire()
+      await lease2.page.setContent('<h1>ok</h1>')
+      expect(await lease2.page.textContent('h1')).toBe('ok')
+      await lease2.release()
+    } finally {
+      await crashPool.close().catch(() => {})
+    }
+  })
+})
