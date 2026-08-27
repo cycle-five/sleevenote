@@ -1,4 +1,5 @@
 import type { CacheStore } from './store.js'
+import { DEFAULT_PRODUCE_BUDGET_MS } from './config.js'
 
 // Tests import `MemoryStore` (and the rest of the store surface) from this
 // module rather than from `store.js` directly -- callers of the cache only
@@ -11,9 +12,7 @@ export function cacheKey(type: 'track' | 'album' | 'playlist', id: string): stri
   return `v1:${type}:${id}`
 }
 
-const LOCK_TTL_SECONDS = 30
 const LOCK_POLL_INTERVAL_MS = 50
-const LOCK_WAIT_TIMEOUT_MS = 30_000
 
 // Physical entries outlive their logical TTL by this factor, so an expired
 // entry is still sitting in the store -- and available to stale-on-error --
@@ -43,9 +42,16 @@ function isFresh(entry: Entry<unknown>, ttlSeconds: number, now: number): boolea
 
 /**
  * Run `produce`, cache the result, and report it as a miss -- unless it
- * throws, in which case an existing (necessarily expired, since a fresh one
- * would have short-circuited the caller already) entry is served as stale
- * instead of the error, if one is there to serve.
+ * throws, in which case an existing entry is served instead of the error, if
+ * one is there to serve.
+ *
+ * That entry is not necessarily stale: this is also called from the
+ * lock-wait timeout fallback, so it's possible for a *different* caller to
+ * have raced ahead of us, produced successfully, and written a fresh entry
+ * while we were still failing. `hit` feeds cache-hit-rate observability, so
+ * it must reflect what's actually true, not just "produce() threw" -- an
+ * entry found here is labelled 'fresh' or 'stale' by the same freshness
+ * check as everywhere else, never assumed.
  */
 async function produceAndCache<T>(
   store: CacheStore,
@@ -53,15 +59,17 @@ async function produceAndCache<T>(
   ttlSeconds: number,
   now: number,
   produce: () => Promise<T>,
-): Promise<{ value: T; hit: 'stale' | 'miss' }> {
+): Promise<{ value: T; hit: 'fresh' | 'stale' | 'miss' }> {
   try {
     const value = await produce()
     const entry: Entry<T> = { value, storedAt: now }
     await store.set(key, JSON.stringify(entry), ttlSeconds * STALE_GRACE_MULTIPLIER)
     return { value, hit: 'miss' }
   } catch (err) {
-    const stale = await readEntry<T>(store, key)
-    if (stale) return { value: stale.value, hit: 'stale' }
+    const found = await readEntry<T>(store, key)
+    if (found) {
+      return { value: found.value, hit: isFresh(found, ttlSeconds, now) ? 'fresh' : 'stale' }
+    }
     throw err
   }
 }
@@ -72,6 +80,15 @@ async function produceAndCache<T>(
  * time actually passing), single-flight production via an advisory lock, and
  * stale-on-error fallback. See task-3-brief.md and the team lead's context
  * for why these two behaviours are the point of this module.
+ *
+ * `produceBudgetMs` bounds how long `produce()` may legitimately run (see
+ * `DEFAULT_PRODUCE_BUDGET_MS` in config.ts for the derivation) and governs
+ * both the single-flight lock's TTL and how long a waiter polls before
+ * falling through to produce directly -- one number governs both, so a
+ * caller that threads its own `config.produceBudgetMs` through here can
+ * never have the lock disagree with reality about how long production takes.
+ * Defaults to the same value `loadConfig` defaults to, for callers (and
+ * tests) that don't have a `Config` to hand.
  */
 export async function withCache<T>(opts: {
   store: CacheStore
@@ -79,8 +96,12 @@ export async function withCache<T>(opts: {
   ttlSeconds: number
   now: number
   produce: () => Promise<T>
+  produceBudgetMs?: number
 }): Promise<{ value: T; hit: 'fresh' | 'stale' | 'miss' }> {
   const { store, key, ttlSeconds, now, produce } = opts
+  const produceBudgetMs = opts.produceBudgetMs ?? DEFAULT_PRODUCE_BUDGET_MS
+  const lockTtlSeconds = Math.ceil(produceBudgetMs / 1000)
+  const lockWaitTimeoutMs = produceBudgetMs
 
   const existing = await readEntry<T>(store, key)
   if (existing && isFresh(existing, ttlSeconds, now)) {
@@ -88,7 +109,7 @@ export async function withCache<T>(opts: {
   }
 
   const lockKey = `${key}:lock`
-  const acquired = await store.lock(lockKey, LOCK_TTL_SECONDS)
+  const acquired = await store.lock(lockKey, lockTtlSeconds)
 
   if (acquired) {
     try {
@@ -101,7 +122,7 @@ export async function withCache<T>(opts: {
   // Someone else is producing this key. Poll for them to finish rather than
   // doing redundant work ourselves -- this is what makes concurrent misses
   // for the same key share a single produce() call.
-  const deadline = Date.now() + LOCK_WAIT_TIMEOUT_MS
+  const deadline = Date.now() + lockWaitTimeoutMs
   while (Date.now() < deadline) {
     await sleep(LOCK_POLL_INTERVAL_MS)
     const candidate = await readEntry<T>(store, key)

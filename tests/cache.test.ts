@@ -73,4 +73,66 @@ describe('withCache', () => {
     expect(calls).toBe(1)
     for (const r of results) expect(r.value).toEqual({ n: 1 })
   })
+
+  // The lock's TTL and a waiter's wait timeout must both come from
+  // produceBudgetMs, not a hardcoded constant -- otherwise a produce() that
+  // legitimately runs longer than the hardcoded value causes the lock to
+  // expire mid-flight, and a second caller starts a redundant, concurrent
+  // produce() call of its own. A tiny custom budget here proves the wait
+  // timeout actually honours the option rather than a fixed default.
+  it('honors a custom produceBudgetMs for the lock-wait timeout', async () => {
+    const store = new MemoryStore()
+    // Simulate another caller already holding the lock for far longer than
+    // our budget below.
+    await store.lock('k:lock', 60)
+    let calls = 0
+    const produce = async () => { calls++; return { n: 2 } }
+
+    const start = Date.now()
+    const result = await withCache({
+      store, key: 'k', ttlSeconds: 60, now: 1000, produce, produceBudgetMs: 200,
+    })
+    const elapsed = Date.now() - start
+
+    expect(result.hit).toBe('miss')
+    expect(result.value).toEqual({ n: 2 })
+    expect(calls).toBe(1)
+    // Fell through close to the 200ms budget, not the (much larger) default.
+    expect(elapsed).toBeLessThan(2000)
+  })
+
+  // Regression for a labelling bug: the error branch used to assume any
+  // entry it found was stale, reasoning that a fresh one would have
+  // short-circuited the caller earlier. That reasoning breaks once a
+  // lock-wait timeout can fall through and produce directly -- a *different*
+  // caller can race ahead, succeed, and write a fresh entry while the
+  // original lock-holder is still failing.
+  it('labels an entry found after a failure as fresh, not stale, when a different caller just produced it', async () => {
+    const store = new MemoryStore()
+
+    // Holder: acquires the lock normally, then fails slowly.
+    const holder = withCache({
+      store, key: 'k', ttlSeconds: 60, now: 1000, produceBudgetMs: 5000,
+      produce: async () => {
+        await new Promise((r) => setTimeout(r, 300))
+        throw new Error('holder failed')
+      },
+    })
+    // Waiter: can't get the lock, times out almost immediately (tiny
+    // budget), falls through, and produces successfully well before the
+    // holder fails.
+    const waiter = withCache({
+      store, key: 'k', ttlSeconds: 60, now: 1000, produceBudgetMs: 50,
+      produce: async () => ({ n: 99 }),
+    })
+
+    const [holderResult, waiterResult] = await Promise.all([holder, waiter])
+
+    expect(waiterResult.hit).toBe('miss')
+    expect(waiterResult.value).toEqual({ n: 99 })
+    // The holder's own produce() failed, but the entry it finds afterward
+    // was just written by the waiter and is genuinely fresh.
+    expect(holderResult.hit).toBe('fresh')
+    expect(holderResult.value).toEqual({ n: 99 })
+  })
 })
