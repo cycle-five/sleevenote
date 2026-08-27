@@ -255,6 +255,14 @@ export function albumTotalCount(recorded: Recorded[], id: string): number | null
  * `albumTotalCount` to detect the former without being fooled by the
  * latter. Returns `null` only if the entity itself can't be found (mirrors
  * `albumTotalCount`); returns `0` if the entity has no `items` array at all.
+ *
+ * Unlike `playlistItemCount`, this is a plain array length, not a union of
+ * ranges: `findAlbumUnion` (like `normalizeAlbum`) only ever reads
+ * `tracksV2.items` off a single response -- there is no pagination for
+ * albums per `docs/captured-shapes.md`, so there is nothing to sum or
+ * duplicate across multiple pages in the first place. If a duplicate copy
+ * of the same album response were ever recorded, `findAlbumUnion` returning
+ * the first match (not all of them) means it's simply never read twice.
  */
 export function albumItemCount(recorded: Recorded[], id: string): number | null {
   const albumUnion = findAlbumUnion(recorded, id)
@@ -377,21 +385,70 @@ export function playlistTotalCount(recorded: Recorded[], id: string): number | n
 }
 
 /**
- * The number of raw track-item entries actually present across every
- * page-bearing response for this playlist -- BEFORE `normalizePlaylist`
- * drops malformed ones (no name, no artists; see `trackFromNode`).
- * Deliberately not the same thing as `normalizePlaylist(...).tracks.length`:
- * a track dropped for being malformed is Task 2's validation rule doing its
- * job (a nameless/artist-less track is useless to a search-query consumer),
- * not a sign that a page went unfetched. Completeness is about pagination
- * coverage -- did we see everything Spotify declared -- not about how much
- * of what we saw survived validation; compare THIS against
- * `playlistTotalCount` to detect the former without being fooled by the
- * latter. Returns `null` only if the entity itself can't be found (mirrors
- * `playlistTotalCount`).
+ * The total length of the union of `[offset, offset + length)` ranges in
+ * `intervals`, collapsing duplicate and overlapping ranges instead of
+ * summing their lengths. Summing would let a page recorded twice, or two
+ * overlapping page windows, inflate the count past what was actually
+ * covered -- and a misbehaving scroll (the exact thing `playlistItemCount`
+ * exists to catch) is the most plausible source of a duplicated or
+ * overlapping fetch, so summing is weakest precisely where this check needs
+ * to be strongest. Zero-length intervals are dropped; they cover nothing
+ * and would otherwise need special-casing in the merge below.
+ */
+function unionCoverage(intervals: { offset: number; length: number }[]): number {
+  const sorted = intervals
+    .filter((iv) => iv.length > 0)
+    .map((iv) => ({ start: iv.offset, end: iv.offset + iv.length }))
+    .sort((a, b) => a.start - b.start)
+
+  let total = 0
+  let runStart: number | null = null
+  let runEnd = 0
+  for (const iv of sorted) {
+    if (runStart === null) {
+      runStart = iv.start
+      runEnd = iv.end
+    } else if (iv.start > runEnd) {
+      // A genuine gap: close out the run so far and start a new one.
+      total += runEnd - runStart
+      runStart = iv.start
+      runEnd = iv.end
+    } else if (iv.end > runEnd) {
+      // Overlaps (or exactly abuts) the current run -- extend it.
+      runEnd = iv.end
+    }
+    // Else: iv is entirely contained in the current run (a duplicate or a
+    // strict subset) -- it adds no new coverage.
+  }
+  if (runStart !== null) total += runEnd - runStart
+  return total
+}
+
+/**
+ * The number of *distinct* track-item positions actually covered across
+ * every page-bearing response for this playlist -- BEFORE
+ * `normalizePlaylist` drops malformed ones (no name, no artists; see
+ * `trackFromNode`). Deliberately not the same thing as
+ * `normalizePlaylist(...).tracks.length`: a track dropped for being
+ * malformed is Task 2's validation rule doing its job (a nameless/
+ * artist-less track is useless to a search-query consumer), not a sign that
+ * a page went unfetched. Completeness is about pagination coverage -- did
+ * we see everything Spotify declared -- not about how much of what we saw
+ * survived validation; compare THIS against `playlistTotalCount` to detect
+ * the former without being fooled by the latter.
+ *
+ * Deliberately the size of the UNION of each page's `[offset, offset +
+ * items.length)` range, not the sum of `items.length` across pages: summing
+ * lets a duplicated or overlapping page inflate the count until it matches
+ * the declared total even though real positions were never covered -- and
+ * NOT a count of distinct track URIs either, since a playlist may
+ * legitimately contain the same track twice, which URI-distinctness would
+ * wrongly undercount as missing. Returns `null` only if the entity itself
+ * can't be found (mirrors `playlistTotalCount`).
  */
 export function playlistItemCount(recorded: Recorded[], id: string): number | null {
   const entity = findPlaylistEntity(recorded, id)
   if (!entity) return null
-  return playlistPages(recorded).reduce((sum, page) => sum + page.items.length, 0)
+  const intervals = playlistPages(recorded).map((page) => ({ offset: page.offset, length: page.items.length }))
+  return unionCoverage(intervals)
 }

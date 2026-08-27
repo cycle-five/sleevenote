@@ -1,4 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest'
+import { readFile } from 'node:fs/promises'
 import { createPool } from '../src/browser.js'
 import { loadConfig } from '../src/config.js'
 import {
@@ -8,6 +9,10 @@ import {
   ExtractionEmptyError,
   ExtractionIncompleteError,
 } from '../src/extract.js'
+import { playlistItemCount, playlistTotalCount } from '../src/normalize.js'
+import type { Recorded } from '../src/types.js'
+
+const PATHFINDER_URL = 'https://api-partner.spotify.com/pathfinder/v2/query'
 
 /** A `content.items[]` entry shaped like a real playlist track item. */
 function playlistItem(trackId: string, name: string) {
@@ -67,6 +72,88 @@ async function routedPage(p: Awaited<ReturnType<typeof createPool>>) {
   await lease.release()
   return lease.page
 }
+
+/** A page-bearing `data.playlistV2` response, entity fields optional. */
+function playlistPageResponse(
+  id: string,
+  opts: { offset: number; limit: number; itemCount: number; totalCount: number; entity?: boolean },
+): Recorded {
+  const items = Array.from({ length: opts.itemCount }, (_, i) => playlistItem(`t${opts.offset + i}`, `T${opts.offset + i}`))
+  const content = { totalCount: opts.totalCount, pagingInfo: { offset: opts.offset, limit: opts.limit }, items }
+  const playlistV2 = opts.entity
+    ? {
+        __typename: 'Playlist',
+        name: 'Union Test Playlist',
+        uri: `spotify:playlist:${id}`,
+        ownerV2: { data: { name: 'Someone' } },
+        images: { items: [] },
+        content,
+      }
+    : { __typename: 'Playlist', content }
+  return { url: PATHFINDER_URL, status: 200, body: { data: { playlistV2 } } }
+}
+
+// Fix round 4: playlistItemCount SUMMED items.length across page-bearing
+// responses. A duplicated or overlapping page inflates that sum until it
+// matches the declared total even though real positions were never
+// covered -- and a misbehaving scroll (the exact thing this check exists to
+// catch) is the most plausible source of a duplicate or overlapping fetch,
+// so the old arithmetic was weakest exactly where it needed to be
+// strongest. These are pure unit tests against playlistItemCount directly
+// (no browser involved) because the defect is arithmetic, not a scrolling
+// or navigation behavior -- the team lead's report itself was framed purely
+// in terms of synthetic offset/length numbers.
+describe('playlistItemCount: union of ranges, not sum', () => {
+  it('collapses a duplicated page instead of summing it, so a genuinely missing page is still detected', () => {
+    const id = 'dup-page'
+    const recorded: Recorded[] = [
+      playlistPageResponse(id, { offset: 0, limit: 2, itemCount: 2, totalCount: 4, entity: true }),
+      // The same page 0 window recorded a second time (e.g. a retried
+      // fetch). Offset 2 -- the genuinely missing page -- is never recorded.
+      playlistPageResponse(id, { offset: 0, limit: 2, itemCount: 2, totalCount: 4 }),
+    ]
+    // Union of [0,2) and [0,2) is 2, not the sum 2+2=4.
+    expect(playlistItemCount(recorded, id)).toBe(2)
+    expect(playlistTotalCount(recorded, id)).toBe(4)
+  })
+
+  it('collapses overlapping ranges instead of summing them, so a genuine gap past the overlap is still detected', () => {
+    const id = 'overlap-incomplete'
+    const recorded: Recorded[] = [
+      playlistPageResponse(id, { offset: 0, limit: 3, itemCount: 3, totalCount: 6, entity: true }),
+      playlistPageResponse(id, { offset: 2, limit: 3, itemCount: 3, totalCount: 6 }),
+    ]
+    // [0,3) union [2,5) = [0,5), length 5 -- not the sum 3+3=6. Index 5 was
+    // genuinely never seen.
+    expect(playlistItemCount(recorded, id)).toBe(5)
+    expect(playlistTotalCount(recorded, id)).toBe(6)
+  })
+
+  it('succeeds when overlapping ranges still cover the full declared range, even though their sum overshoots it', () => {
+    const id = 'overlap-complete'
+    const recorded: Recorded[] = [
+      playlistPageResponse(id, { offset: 0, limit: 3, itemCount: 3, totalCount: 6, entity: true }),
+      playlistPageResponse(id, { offset: 2, limit: 4, itemCount: 4, totalCount: 6 }),
+    ]
+    // [0,3) union [2,6) = [0,6), length 6 -- matches declared, even though
+    // the sum (3+4=7) overshoots it. An aggressive-but-successful scroll
+    // must not be rejected for fetching more than it strictly needed to.
+    expect(playlistItemCount(recorded, id)).toBe(6)
+    expect(playlistTotalCount(recorded, id)).toBe(6)
+  })
+
+  it('gives the same result the sum would have on the real, non-overlapping fixtures', async () => {
+    const large = JSON.parse(await readFile('tests/fixtures/playlist-large.json', 'utf8')) as Recorded[]
+    const small = JSON.parse(await readFile('tests/fixtures/playlist-small.json', 'utf8')) as Recorded[]
+    // docs/captured-shapes.md records these fixtures' four/two pages as
+    // non-overlapping (offsets 0/25, 25/50, 75/50, 125/25 for the large one;
+    // 0/25, 25/25 for the small one), so the union should equal the
+    // previously-verified sum -- confirming the real captures don't overlap
+    // and this fix doesn't regress them.
+    expect(playlistItemCount(large, '37i9dQZF1DX4o1oenSJRJd')).toBe(150)
+    expect(playlistItemCount(small, '37i9dQZF1DXcBWIGoYBM5M')).toBe(50)
+  })
+})
 
 describe('extract', () => {
   it('resolves a track by dispatching to normalizeTrack', async () => {
