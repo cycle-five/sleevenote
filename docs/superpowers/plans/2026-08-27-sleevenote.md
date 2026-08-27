@@ -127,10 +127,10 @@ const TARGETS: Record<string, string> = {
   // A well-known stable track.
   track: 'https://open.spotify.com/track/0c6xIDDpzE81m2q797ordA',
   album: 'https://open.spotify.com/album/6ymZBbRSmzAvoSGmwAFoxm',
-  // Small: well under one page of tracks.
-  'playlist-small': 'https://open.spotify.com/playlist/37i9dQZF1DX4o1oenSJRJd',
-  // Large: MUST be >100 tracks. This is the pagination probe.
-  'playlist-large': 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
+  // Small: crosses one page boundary (measured totalCount 50).
+  'playlist-small': 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
+  // Large: crosses several (measured totalCount 150). This is the pagination probe.
+  'playlist-large': 'https://open.spotify.com/playlist/37i9dQZF1DX4o1oenSJRJd',
 }
 
 async function capture(name: string, url: string): Promise<void> {
@@ -159,12 +159,34 @@ async function capture(name: string, url: string): Promise<void> {
   console.log(`[${name}] navigating to ${url}`)
   await page.goto(url, { waitUntil: 'networkidle', timeout: 60_000 })
 
-  // Scroll to the bottom repeatedly. If the track list is virtualized and
-  // paginated, this is what triggers the later pages -- and whether it does is
-  // precisely what this probe exists to find out.
-  for (let i = 0; i < 30; i++) {
-    await page.mouse.wheel(0, 20_000)
-    await page.waitForTimeout(400)
+  // Drive the VIRTUALIZED CONTAINER, incrementally.
+  //
+  // Two things here are load-bearing and were each measured wrong first:
+  //
+  //   1. `page.mouse.wheel` fires at the cursor's position, which defaults to
+  //      (0,0) -- outside the track list. It scrolls nothing at all.
+  //   2. Jumping to the bottom (`scrollTop = scrollHeight`) skips the middle: a
+  //      virtualized list only fetches what is near the viewport, so you get
+  //      page 1 and the last page and nothing between them.
+  //
+  // Stepping by ~80% of the container's height requests every page in order.
+  // Measured on a 150-track playlist: offset 0/25, 25/50, 75/50, 125/25 = 150.
+  let exhausted = false
+  for (let i = 0; i < 200 && !exhausted; i++) {
+    exhausted = await page.evaluate(() => {
+      let best: HTMLElement | null = null
+      for (const el of Array.from(document.querySelectorAll('*'))) {
+        const e = el as HTMLElement
+        if (e.scrollHeight > e.clientHeight + 200 && e.clientHeight > 200) {
+          if (!best || e.scrollHeight > best.scrollHeight) best = e
+        }
+      }
+      if (!best) return true
+      const before = best.scrollTop
+      best.scrollTop = Math.min(best.scrollTop + best.clientHeight * 0.8, best.scrollHeight)
+      return best.scrollTop <= before
+    })
+    await page.waitForTimeout(350)
   }
   await page.waitForTimeout(3_000)
 
@@ -185,6 +207,8 @@ for (const [name, url] of Object.entries(TARGETS)) {
 Run: `npx tsx tools/capture.ts`
 
 Expected: four files under `tests/fixtures/`, each a non-empty array. If any file is an empty array, extraction by interception does not work as designed and this is an **escalation, not a bug to work around** — report it and stop.
+
+For `playlist-large`, the recorded responses must contain `data.playlistV2.content` entries whose `pagingInfo.offset` values advance and whose summed `items` lengths equal `totalCount` (measured: 150). Anything less means the scroll is not driving the container — re-read the comment in Step 5 before changing anything else.
 
 - [ ] **Step 7: Answer the pagination question and write `docs/captured-shapes.md`**
 
@@ -274,7 +298,7 @@ describe('normalizeTrack', () => {
 
 describe('normalizePlaylist', () => {
   it('extracts every track, each with a usable name and artist', async () => {
-    const pl = normalizePlaylist(await fixture('playlist-small'), '37i9dQZF1DX4o1oenSJRJd')
+    const pl = normalizePlaylist(await fixture('playlist-small'), '37i9dQZF1DXcBWIGoYBM5M')
     expect(pl).not.toBeNull()
     expect(pl!.tracks.length).toBeGreaterThan(0)
     for (const t of pl!.tracks) {
@@ -286,10 +310,18 @@ describe('normalizePlaylist', () => {
   // The two fields cracktunes actually consumes. If these regress, every
   // downstream search query silently gets worse, so assert them explicitly.
   it('never yields a track with an empty name or no artists', async () => {
-    const pl = normalizePlaylist(await fixture('playlist-large'), '37i9dQZF1DXcBWIGoYBM5M')
+    const pl = normalizePlaylist(await fixture('playlist-large'), '37i9dQZF1DX4o1oenSJRJd')
     expect(pl).not.toBeNull()
     const bad = pl!.tracks.filter((t) => !t.name || t.artists.length === 0)
     expect(bad).toEqual([])
+  })
+
+  // Guards the defect that blocked Task 1: a scroll that fails to drive the
+  // virtualized container yields page one only, which still looks like a
+  // perfectly valid playlist. Assert the whole thing came back.
+  it('recovers every page, not just the first', async () => {
+    const pl = normalizePlaylist(await fixture('playlist-large'), '37i9dQZF1DX4o1oenSJRJd')
+    expect(pl!.tracks.length).toBeGreaterThan(100)
   })
 })
 ```
@@ -925,7 +957,7 @@ describe.skipIf(!LIVE)('live extraction against real Spotify', () => {
   }, 120_000)
 
   it('resolves a playlist with every track usable', async () => {
-    const p: any = await extract('playlist', '37i9dQZF1DXcBWIGoYBM5M', pool, cfg)
+    const p: any = await extract('playlist', '37i9dQZF1DX4o1oenSJRJd', pool, cfg)
     expect(p.tracks.length).toBeGreaterThan(0)
     expect(p.tracks.filter((t: any) => !t.name || t.artists.length === 0)).toEqual([])
   }, 180_000)
