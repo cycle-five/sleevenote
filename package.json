@@ -2,19 +2,19 @@
   "name": "sleevenote",
   "version": "1.0.0",
   "description": "Resolve a music-entity URL to normalized metadata. No provider API key.",
-  "main": "index.js",
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:live": "SLEEVENOTE_LIVE=1 vitest run tests/live.smoke.test.ts",
+    "build": "tsc",
+    "start": "node dist/src/index.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cycle-five/sleevenote.git"
   },
-  "keywords": [],
-  "author": "",
   "license": "MIT",
   "type": "module",
   "bugs": {
