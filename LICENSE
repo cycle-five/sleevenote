@@ -1,26 +1,3 @@
-
-how: Create a text file (typically named LICENSE or LICENSE.txt) in the root of your source code and copy the text of the license into the file. Replace 2026 with the current year and Cycle Five with the name (or names) of the copyright holders.
-
-using:
-  Babel: https://github.com/babel/babel/blob/master/LICENSE
-  .NET: https://github.com/dotnet/runtime/blob/main/LICENSE.TXT
-  Rails: https://github.com/rails/rails/blob/master/MIT-LICENSE
-
-permissions:
-  - commercial-use
-  - modifications
-  - distribution
-  - private-use
-
-conditions:
-  - include-copyright
-
-limitations:
-  - liability
-  - warranty
-
----
-
 MIT License
 
 Copyright (c) 2026 Cycle Five
