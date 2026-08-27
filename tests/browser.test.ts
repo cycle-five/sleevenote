@@ -43,3 +43,76 @@ describe('createPool', () => {
     await lease.release()
   })
 })
+
+// Review round 1 found that close() can race an in-flight recycle: release()
+// takes the recycle path, awaits inside it, and close() runs to completion
+// in that window. Both possible outcomes (recycle's replacement context
+// loses the race and throws, or wins the race and has nowhere to go) had to
+// stop being "bad" -- see src/browser.ts's `closed` re-checks in
+// releaseRecord for the fix.
+describe('createPool: close() racing an in-flight recycle', () => {
+  it('does not throw from release() or leak a context when close() runs mid-recycle', async () => {
+    const raceCfg = loadConfig({ POOL_SIZE: '1', CONTEXT_MAX_USES: '1' })
+    const racePool = await createPool(raceCfg)
+    try {
+      const lease = await racePool.acquire() // uses becomes 1 -- at budget already
+      // release() takes the recycle path (uses >= contextMaxUses) and awaits
+      // inside it (context.close(), then a fresh browser.newContext()).
+      // Calling close() immediately after, before either await settles,
+      // reliably lands it inside that window.
+      const releasing = lease.release()
+      const closing = racePool.close()
+      await expect(releasing).resolves.toBeUndefined()
+      await expect(closing).resolves.toBeUndefined()
+      expect(racePool.liveContexts()).toBe(0)
+    } finally {
+      await racePool.close().catch(() => {})
+    }
+  })
+})
+
+// Review round 1 also found that a failure inside recycle()'s unguarded
+// createContext() call permanently cost the pool a slot -- silently, with no
+// error visible to anyone and (worse) a queued waiter left hanging forever.
+// The fix: retry context creation once (a single transient failure
+// shouldn't cost a permanent slot), and if that also fails, reject the
+// waiter queued for this slot -- if any -- and propagate to release()'s
+// caller, rather than losing capacity without a trace.
+describe('createPool: a failed context recycle', () => {
+  it('recovers via one retry and keeps the pool healthy', async () => {
+    const cfg2 = loadConfig({ POOL_SIZE: '1', CONTEXT_MAX_USES: '1' })
+    const pool2 = await createPool(cfg2, { failNextContextCreations: 1 })
+    try {
+      const lease = await pool2.acquire() // uses becomes 1 -- at budget
+      // recycle's first createContext() attempt is the injected failure;
+      // the retry is real and should succeed.
+      await expect(lease.release()).resolves.toBeUndefined()
+      expect(pool2.liveContexts()).toBe(1)
+      const lease2 = await pool2.acquire()
+      await lease2.page.setContent('<h1>still alive</h1>')
+      expect(await lease2.page.textContent('h1')).toBe('still alive')
+      await lease2.release()
+    } finally {
+      await pool2.close()
+    }
+  })
+
+  it('rejects a stranded waiter and the releasing caller instead of losing a slot silently', async () => {
+    const cfg3 = loadConfig({ POOL_SIZE: '1', CONTEXT_MAX_USES: '1' })
+    const pool3 = await createPool(cfg3, { failNextContextCreations: 2 })
+    try {
+      const a = await pool3.acquire() // uses becomes 1 -- at budget
+      // Pool size 1: this queues immediately, and is exactly the caller a
+      // silently-lost slot would have stranded forever.
+      const waiterPromise = pool3.acquire()
+      await expect(a.release()).rejects.toThrow(/replacement browser context/)
+      await expect(waiterPromise).rejects.toThrow(/replacement browser context/)
+      // The old context was genuinely closed and never replaced -- the pool
+      // really does have one fewer live context now, and says so rather
+      // than claiming a slot that doesn't exist.
+      expect(pool3.liveContexts()).toBe(0)
+    } finally {
+      await pool3.close()
+    }
+  })
+})
