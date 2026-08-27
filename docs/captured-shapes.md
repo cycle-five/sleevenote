@@ -267,3 +267,27 @@ recovered counts): both `5s5svl5DzlSmEvkjuL8Upw` and `1ff9TZHVP9QNfXqL3pwrTk`
 (each declaring 60 tracks) resolve to all 60, in `trackNumber` order, sourced
 from two `tracksV2` batches per album, keyed and deduplicated exactly as
 described above.
+
+**Batch shape, confirmed across four albums (60/60/100/150 declared
+tracks):** batch one always caps at 50 items; the entire remainder arrives as
+one second batch, not further 50-item pages (the 150-track album split
+50 + 100, not 50 + 50 + 50). Every case tested landed on exactly two batches,
+up to 150 tracks; larger albums are unverified. `albumTrackBatches` doesn't
+assume this shape — it gathers however many qualifying batches actually show
+up — but it's the shape actually observed.
+
+**`discNumber` on a genuine multi-disc album, confirmed live:**
+`78dSB74LrGEdjilKcR3bIW` (Shostakovich, "The Golden Age, Op. 22", a real
+2-disc release, 39 tracks, single response — small enough not to paginate)
+shows `discNumber` actually varying and `trackNumber` restarting per disc:
+
+```
+disc 1: trackNumber 1..17
+disc 2: trackNumber 1..22
+```
+
+This is why the fix keys by `(discNumber, trackNumber)` rather than
+`trackNumber` alone — on a single-disc/flat compilation (the only shape the
+pagination albums above happened to be) that distinction is invisible, but
+here `trackNumber` alone would collapse disc 1 track 1 and disc 2 track 1
+into the same key and silently drop one of them.

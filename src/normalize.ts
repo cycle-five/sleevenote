@@ -262,6 +262,14 @@ export function albumTotalCount(recorded: Recorded[], id: string): number | null
  * track count, captured in the same recording, would be indistinguishable
  * by this check alone. No stronger per-batch signal (an album id, a batch
  * index) has been observed in the wild to discriminate on instead.
+ *
+ * Observed batch shape across four albums (60/60/100/150 declared tracks):
+ * batch one always caps at 50 items, and the entire remainder arrives as one
+ * second batch (e.g. the 150-track album split 50 + 100, not 50 + 50 + 50).
+ * This function doesn't assume that shape -- it just gathers however many
+ * qualifying batches show up -- but it's worth recording that "always
+ * exactly two batches" held in every case tested, up to 150 tracks; larger
+ * albums are unverified.
  */
 function albumTrackBatches(recorded: Recorded[], id: string): Record<string, unknown>[] {
   const declaredTotal = albumTotalCount(recorded, id)
@@ -304,6 +312,16 @@ function albumTrackBatches(recorded: Recorded[], id: string): Record<string, unk
  * counted and returned -- matching this file's "never throw, never
  * silently drop" rule for malformed input -- just without a defined
  * position relative to the properly-keyed entries.
+ *
+ * `discNumber` was `1` on every album tested for pagination (four, up to 150
+ * tracks) -- flat, effectively single-disc compilations where `trackNumber`
+ * ran continuously rather than restarting. A genuine 2-disc album
+ * (`78dSB74LrGEdjilKcR3bIW`, Shostakovich's "The Golden Age") confirms why
+ * `discNumber` has to be part of the key rather than just a tiebreaker:
+ * `trackNumber` restarts at 1 on disc 2 (disc 1 ran 1..17, disc 2 ran 1..22,
+ * `discNumber` observed as exactly `{1, 2}`) -- keying by `trackNumber`
+ * alone would have collapsed disc 1 track 1 and disc 2 track 1 into a
+ * single position and silently dropped one of them.
  */
 function albumItemsByPosition(recorded: Recorded[], id: string): unknown[] {
   const byKey = new Map<string, { sortKey: number; raw: unknown }>()

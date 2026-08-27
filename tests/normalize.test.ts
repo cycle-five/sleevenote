@@ -179,6 +179,59 @@ describe('normalizeAlbum', () => {
     expect(albumItemCount(recorded, id)).toBe(55)
     expect(albumItemCount(recorded, id)).not.toBe(albumTotalCount(recorded, id))
   })
+
+  // The confirmed real batch shape (docs/captured-shapes.md, four albums up
+  // to 150 tracks): batch one caps at 50, and the ENTIRE remainder arrives
+  // as a single second batch -- not further 50-item pages. The 60-track
+  // tests above happen to have a small, roughly page-sized second batch;
+  // this one proves the merge doesn't assume symmetric or capped batch
+  // sizes by giving it a 100-item second batch.
+  it('recovers all 150 tracks when the second batch is much larger than the first (the confirmed real shape)', () => {
+    const id = 'oneFiftyTrackAlbumId'
+    const batchOneItems = Array.from({ length: 50 }, (_, i) =>
+      albumTrackItem(`t${i + 1}`, `Track ${i + 1}`, i + 1),
+    )
+    const batchTwoItems = Array.from({ length: 100 }, (_, i) => albumTrackItem(`t${i + 51}`, `Track ${i + 51}`, i + 51))
+    const recorded = [
+      albumEntityResponse(id, 150, batchOneItems),
+      albumBatchResponse(150, batchTwoItems),
+    ]
+
+    const album = normalizeAlbum(recorded, id)
+    expect(album).not.toBeNull()
+    expect(album!.tracks.length).toBe(150)
+    expect(album!.tracks.map((t) => t.name)).toEqual(Array.from({ length: 150 }, (_, i) => `Track ${i + 1}`))
+    expect(albumItemCount(recorded, id)).toBe(150)
+  })
+
+  // Confirmed live against a genuine 2-disc album (78dSB74LrGEdjilKcR3bIW,
+  // Shostakovich's "The Golden Age, Op. 22"): disc 1 ran trackNumber 1..17,
+  // disc 2 restarted at trackNumber 1..22, discNumber observed as exactly
+  // {1, 2}. Keying by trackNumber alone -- as every other test in this file
+  // could get away with, since none of them vary discNumber -- would
+  // collapse disc 1 track 1 and disc 2 track 1 into one key and silently
+  // drop one of them. This is the regression test for that: two tracks that
+  // share a trackNumber but differ in discNumber must both survive.
+  it('keys disc 2 track 1 separately from disc 1 track 1 on a multi-disc album', () => {
+    const id = 'twoDiscAlbumId'
+    const items = [
+      albumTrackItem('d1t1', 'Disc 1 Track 1', 1, 1),
+      albumTrackItem('d1t2', 'Disc 1 Track 2', 2, 1),
+      albumTrackItem('d2t1', 'Disc 2 Track 1', 1, 2),
+      albumTrackItem('d2t2', 'Disc 2 Track 2', 2, 2),
+    ]
+    const recorded = [albumEntityResponse(id, 4, items)]
+
+    const album = normalizeAlbum(recorded, id)
+    expect(album).not.toBeNull()
+    expect(album!.tracks.map((t) => t.name)).toEqual([
+      'Disc 1 Track 1',
+      'Disc 1 Track 2',
+      'Disc 2 Track 1',
+      'Disc 2 Track 2',
+    ])
+    expect(albumItemCount(recorded, id)).toBe(4)
+  })
 })
 
 describe('normalizePlaylist', () => {
