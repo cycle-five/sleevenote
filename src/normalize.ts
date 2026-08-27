@@ -208,10 +208,8 @@ export function normalizeAlbum(recorded: Recorded[], id: string): Album | null {
   const name = asString(albumUnion['name'])
   if (!name) return null
 
-  const tracksV2 = asRecord(albumUnion['tracksV2'])
-  const items = tracksV2 ? (asArray(tracksV2['items']) ?? []) : []
   const tracks: Track[] = []
-  for (const raw of items) {
+  for (const raw of albumItemsByPosition(recorded, id)) {
     const rec = asRecord(raw)
     const trackNode = rec ? rec['track'] : null
     const track = trackFromNode(trackNode, 'duration')
@@ -244,32 +242,122 @@ export function albumTotalCount(recorded: Recorded[], id: string): number | null
 }
 
 /**
- * The number of raw track-item entries actually present in `tracksV2.items`
- * for this album -- BEFORE `normalizeAlbum` drops malformed ones (no name,
- * no artists; see `trackFromNode`). Deliberately not the same thing as
- * `normalizeAlbum(...).tracks.length`: a track dropped for being malformed
- * is Task 2's validation rule doing its job (a nameless/artist-less track is
- * useless to a search-query consumer), not a sign that a page was missed.
- * Completeness is about whether we saw everything Spotify declared, not
- * about how much of what we saw survived validation -- compare THIS against
- * `albumTotalCount` to detect the former without being fooled by the
- * latter. Returns `null` only if the entity itself can't be found (mirrors
- * `albumTotalCount`); returns `0` if the entity has no `items` array at all.
+ * Every `albumUnion.tracksV2` batch recorded for this album, in recording
+ * order -- the raw candidate set `albumItemsByPosition` merges track items
+ * out of.
  *
- * Unlike `playlistItemCount`, this is a plain array length, not a union of
- * ranges: `findAlbumUnion` (like `normalizeAlbum`) only ever reads
- * `tracksV2.items` off a single response -- there is no pagination for
- * albums per `docs/captured-shapes.md`, so there is nothing to sum or
- * duplicate across multiple pages in the first place. If a duplicate copy
- * of the same album response were ever recorded, `findAlbumUnion` returning
- * the first match (not all of them) means it's simply never read twice.
+ * A >50-track album splits `tracksV2.items` across multiple responses (see
+ * docs/captured-shapes.md's "Album" pagination findings), and only the
+ * first of those also happens to be the entity-bearing response
+ * `findAlbumUnion` returns -- later batches carry no `uri` at all, so
+ * uri-matching (which correctly picks out the *entity*, above) can't also
+ * be used to find every *batch*. There is likewise no `pagingInfo` on an
+ * album batch the way there is on a playlist page, so `playlistItemsByIndex`'s
+ * "page-bearing" filter has no album equivalent either.
+ *
+ * `tracksV2.totalCount` matching the entity's declared total is the only
+ * discriminator the recorded shape actually offers here. It is a real
+ * filter -- it rejects a differently-sized album's batch outright -- but it
+ * is NOT a guarantee: two different albums that happen to declare the same
+ * track count, captured in the same recording, would be indistinguishable
+ * by this check alone. No stronger per-batch signal (an album id, a batch
+ * index) has been observed in the wild to discriminate on instead.
+ */
+function albumTrackBatches(recorded: Recorded[], id: string): Record<string, unknown>[] {
+  const declaredTotal = albumTotalCount(recorded, id)
+  if (declaredTotal === null) return []
+  const batches: Record<string, unknown>[] = []
+  for (const data of pathfinderData(recorded)) {
+    const albumUnion = asRecord(data['albumUnion'])
+    if (!albumUnion) continue
+    if (asString(albumUnion['__typename']) !== 'Album') continue
+    const tracksV2 = asRecord(albumUnion['tracksV2'])
+    if (!tracksV2) continue
+    if (asNumber(tracksV2['totalCount']) !== declaredTotal) continue
+    batches.push(tracksV2)
+  }
+  return batches
+}
+
+/**
+ * Every track-item across every `tracksV2` batch for this album,
+ * deduplicated by `(discNumber, trackNumber)` and returned in that order --
+ * the album counterpart of `playlistItemsByIndex`.
+ *
+ * An early pass at this fix searched the recorded shape for something
+ * `pagingInfo`-like, found nothing (albums genuinely have no such field),
+ * and concluded there was no positional signal at all -- proposing
+ * concatenation in arrival order instead. That's wrong: every
+ * `tracksV2.items[].track` entry carries its own `discNumber` and
+ * `trackNumber`, Spotify's own absolute position for the item, which serves
+ * the same role `pagingInfo.offset` serves for a playlist. Keying by that
+ * pair -- not arrival order -- is exact rather than inferred,
+ * order-independent, and collapses a duplicate/overlapping batch into one
+ * entry instead of producing a duplicate `Track`, for the same reasons
+ * `playlistItemsByIndex`'s doc comment gives for keying by absolute index.
+ *
+ * A raw item missing `trackNumber` (a malformed/adversarial recording --
+ * every real album item observed carries one) has no genuine position to
+ * key by. Rather than collapse into, and get silently overwritten by,
+ * whichever other trackNumber-less item happens to key the same, it gets an
+ * always-unique fallback key derived from arrival order, so it's still
+ * counted and returned -- matching this file's "never throw, never
+ * silently drop" rule for malformed input -- just without a defined
+ * position relative to the properly-keyed entries.
+ */
+function albumItemsByPosition(recorded: Recorded[], id: string): unknown[] {
+  const byKey = new Map<string, { sortKey: number; raw: unknown }>()
+  let arrivalIndex = 0
+  for (const tracksV2 of albumTrackBatches(recorded, id)) {
+    const items = asArray(tracksV2['items']) ?? []
+    for (const raw of items) {
+      const idx = arrivalIndex++
+      const rec = asRecord(raw)
+      const track = rec ? asRecord(rec['track']) : null
+      const trackNumber = track ? asNumber(track['trackNumber']) : null
+      const discNumber = track ? asNumber(track['discNumber']) : null
+      if (trackNumber !== null) {
+        byKey.set(`${discNumber ?? 1}:${trackNumber}`, {
+          sortKey: (discNumber ?? 1) * 1_000_000 + trackNumber,
+          raw,
+        })
+      } else {
+        // No genuine position -- see doc comment above. This sort key is
+        // well above any real (discNumber, trackNumber) pair could produce,
+        // so these entries sort after every properly-keyed one and among
+        // themselves preserve arrival order.
+        byKey.set(`raw:${idx}`, { sortKey: 1_000_000_000_000 + idx, raw })
+      }
+    }
+  }
+  return Array.from(byKey.values())
+    .sort((a, b) => a.sortKey - b.sortKey)
+    .map((entry) => entry.raw)
+}
+
+/**
+ * The number of distinct track positions actually recovered across every
+ * `tracksV2` batch for this album -- BEFORE `normalizeAlbum` drops malformed
+ * ones (no name, no artists; see `trackFromNode`). Deliberately not the same
+ * thing as `normalizeAlbum(...).tracks.length`: a track dropped for being
+ * malformed is Task 2's validation rule doing its job (a nameless/
+ * artist-less track is useless to a search-query consumer), not a sign that
+ * a batch was missed. Completeness is about whether we saw everything
+ * Spotify declared, not about how much of what we saw survived validation --
+ * compare THIS against `albumTotalCount` to detect the former without being
+ * fooled by the latter. Returns `null` only if the entity itself can't be
+ * found (mirrors `albumTotalCount`).
+ *
+ * This is simply the size of `albumItemsByPosition`'s deduplicated result --
+ * both it and `normalizeAlbum` build from that single source, so the count
+ * and the track list can never disagree about how many items were seen, the
+ * same property `playlistItemCount`/`normalizePlaylist` have via
+ * `playlistItemsByIndex`.
  */
 export function albumItemCount(recorded: Recorded[], id: string): number | null {
   const albumUnion = findAlbumUnion(recorded, id)
   if (!albumUnion) return null
-  const tracksV2 = asRecord(albumUnion['tracksV2'])
-  const items = tracksV2 ? asArray(tracksV2['items']) : null
-  return items ? items.length : 0
+  return albumItemsByPosition(recorded, id).length
 }
 
 // --- playlist --------------------------------------------------------------

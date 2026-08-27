@@ -1,7 +1,63 @@
 import { describe, it, expect } from 'vitest'
 import { readFile } from 'node:fs/promises'
-import { normalizeTrack, normalizeAlbum, normalizePlaylist } from '../src/normalize.js'
+import { normalizeTrack, normalizeAlbum, normalizePlaylist, albumItemCount, albumTotalCount } from '../src/normalize.js'
 import type { Recorded } from '../src/types.js'
+
+const PATHFINDER_URL = 'https://api-partner.spotify.com/pathfinder/v2/query'
+
+/** A `tracksV2.items[]` entry shaped like a real album track item. */
+function albumTrackItem(trackId: string, name: string, trackNumber: number, discNumber = 1) {
+  return {
+    track: {
+      name,
+      uri: `spotify:track:${trackId}`,
+      artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+      duration: { totalMilliseconds: 200_000 },
+      trackNumber,
+      discNumber,
+    },
+  }
+}
+
+/** The entity-bearing `albumUnion` response: has `uri`, `name`, etc. */
+function albumEntityResponse(id: string, totalCount: number, items: unknown[]): Recorded {
+  return {
+    url: PATHFINDER_URL,
+    status: 200,
+    body: {
+      data: {
+        albumUnion: {
+          __typename: 'Album',
+          name: 'Union Test Album',
+          uri: `spotify:album:${id}`,
+          artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+          coverArt: { sources: [{ url: 'https://img.example/album.jpg', width: 640, height: 640 }] },
+          tracksV2: { totalCount, items },
+        },
+      },
+    },
+  }
+}
+
+/**
+ * A later `albumUnion` batch: same shape, but no `uri` -- exactly how the
+ * real second (and any later) response for a >50-track album arrives, per
+ * `docs/captured-shapes.md`'s "Album" pagination findings.
+ */
+function albumBatchResponse(totalCount: number, items: unknown[]): Recorded {
+  return {
+    url: PATHFINDER_URL,
+    status: 200,
+    body: {
+      data: {
+        albumUnion: {
+          __typename: 'Album',
+          tracksV2: { totalCount, items },
+        },
+      },
+    },
+  }
+}
 
 async function fixture(name: string): Promise<Recorded[]> {
   return JSON.parse(await readFile(`tests/fixtures/${name}.json`, 'utf8')) as Recorded[]
@@ -41,6 +97,87 @@ describe('normalizeAlbum', () => {
   it('returns null rather than throwing when the entity is absent', async () => {
     expect(normalizeAlbum([], 'nope')).toBeNull()
     expect(normalizeAlbum(await fixture('album'), 'a-different-id')).toBeNull()
+  })
+
+  // Regression test for the >50-track pagination bug (see
+  // docs/captured-shapes.md's "Album" pagination findings). tracksV2 arrives
+  // across multiple responses; only the first carries `uri`. Items are keyed
+  // by (discNumber, trackNumber), not concatenated by arrival order, so this
+  // also proves overlap/duplication across batches collapses instead of
+  // producing a duplicate Track: batch two redundantly repeats trackNumber
+  // 50 (the last item of batch one) before continuing with 51..60 -- 61 raw
+  // items total, but only 60 distinct positions.
+  it('recovers every track across multiple tracksV2 batches, not just the uri-bearing one', () => {
+    const id = 'sixtyTrackAlbumId'
+    const batchOneItems = Array.from({ length: 50 }, (_, i) =>
+      albumTrackItem(`t${i + 1}`, `Track ${i + 1}`, i + 1),
+    )
+    const batchTwoItems = [
+      albumTrackItem('t50-dup', 'Track 50 (duplicate arrival)', 50),
+      ...Array.from({ length: 10 }, (_, i) => albumTrackItem(`t${i + 51}`, `Track ${i + 51}`, i + 51)),
+    ]
+    const recorded = [
+      albumEntityResponse(id, 60, batchOneItems),
+      albumBatchResponse(60, batchTwoItems),
+    ]
+
+    const expectedNames = Array.from({ length: 60 }, (_, i) => `Track ${i + 1}`)
+    // Position 50 was recorded twice; the later-arriving write (batch two's
+    // duplicate) wins -- same "later write for an already-seen position
+    // simply replaces it" rule playlistItemsByIndex documents.
+    expectedNames[49] = 'Track 50 (duplicate arrival)'
+
+    const album = normalizeAlbum(recorded, id)
+    expect(album).not.toBeNull()
+    expect(album!.tracks.length).toBe(60)
+    expect(album!.tracks.map((t) => t.name)).toEqual(expectedNames)
+    expect(new Set(album!.tracks.map((t) => t.id)).size).toBe(60)
+    expect(albumItemCount(recorded, id)).toBe(60)
+  })
+
+  // The second batch has no `uri` to match against the entity, so
+  // `tracksV2.totalCount` agreeing with the entity's declared total is the
+  // only available discriminator (see albumItemsByPosition's doc comment for
+  // its limits). A batch that disagrees must not be merged in.
+  it('does not merge a tracksV2 batch whose totalCount disagrees with the entity', () => {
+    const id = 'mismatchedTotalAlbumId'
+    const batchOneItems = Array.from({ length: 50 }, (_, i) =>
+      albumTrackItem(`t${i + 1}`, `Track ${i + 1}`, i + 1),
+    )
+    const strayItems = Array.from({ length: 10 }, (_, i) => albumTrackItem(`s${i + 1}`, `Stray ${i + 1}`, i + 51))
+    const recorded = [
+      albumEntityResponse(id, 60, batchOneItems),
+      // Declares a different total (999) -- e.g. a different album's batch
+      // captured in the same recording. Must be rejected, not merged.
+      albumBatchResponse(999, strayItems),
+    ]
+
+    const album = normalizeAlbum(recorded, id)
+    expect(album).not.toBeNull()
+    expect(album!.tracks.length).toBe(50)
+    expect(album!.tracks.some((t) => t.name.startsWith('Stray'))).toBe(false)
+    expect(albumItemCount(recorded, id)).toBe(50)
+  })
+
+  // Merging batches must not paper over a genuine gap: this models a scroll
+  // that fetched the entity page plus one more batch and then stopped early
+  // -- 55 of 60 declared tracks recovered across two batches, not one. This
+  // is what extract.ts's completeness check (declared !== seen) still needs
+  // to be able to see; albumItemCount is what it reads `seen` from.
+  it('still falls short of the declared total when merged batches genuinely miss tracks', () => {
+    const id = 'shortfallAlbumId'
+    const batchOneItems = Array.from({ length: 50 }, (_, i) =>
+      albumTrackItem(`t${i + 1}`, `Track ${i + 1}`, i + 1),
+    )
+    const batchTwoItems = Array.from({ length: 5 }, (_, i) => albumTrackItem(`t${i + 51}`, `Track ${i + 51}`, i + 51))
+    const recorded = [
+      albumEntityResponse(id, 60, batchOneItems),
+      albumBatchResponse(60, batchTwoItems),
+    ]
+
+    expect(albumTotalCount(recorded, id)).toBe(60)
+    expect(albumItemCount(recorded, id)).toBe(55)
+    expect(albumItemCount(recorded, id)).not.toBe(albumTotalCount(recorded, id))
   })
 })
 

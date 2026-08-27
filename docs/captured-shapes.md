@@ -88,8 +88,8 @@ response that also uses this key) has a `tracksV2` field.
 | `artists[].name` | `data.albumUnion.artists.items[].profile.name` | the album's own artist(s), not a per-track list; same item shape as every other artist list in this corpus |
 | `artists[].id` | `data.albumUnion.artists.items[].uri` | parse from `.uri` (`.id` is also present directly at this level, but parse from `.uri` for consistency with the rest of the corpus) |
 | `image` | `data.albumUnion.coverArt.sources[].url` | same multi-size array shape as track; same sizing rule (largest `width`, else last entry) |
-| `tracks[]` | `data.albumUnion.tracksV2.items[].track` | `tracksV2.items` is the full track list; see below |
-| `tracks[].totalCount` (for verifying completeness) | `data.albumUnion.tracksV2.totalCount` | in the captured fixture (`6ymZBbRSmzAvoSGmwAFoxm`, 15 tracks) `totalCount === items.length`; the whole album came back in one response, no pagination observed for albums |
+| `tracks[]` | `data.albumUnion.tracksV2.items[].track` | `tracksV2.items` is the full track list across every batch; see "Album" under "Pagination" below -- a >50-track album splits across multiple responses |
+| `tracks[].totalCount` (for verifying completeness) | `data.albumUnion.tracksV2.totalCount` | in the small captured fixture (`6ymZBbRSmzAvoSGmwAFoxm`, 15 tracks) `totalCount === items.length` in a single response; **this does not hold for larger albums -- see "Album" under "Pagination" below** |
 
 Each `data.albumUnion.tracksV2.items[].track` maps to a `Track`:
 
@@ -225,3 +225,45 @@ from the original plan (`playlist-small` is now `37i9dQZF1DXcBWIGoYBM5M`,
 them since the plan was written — the id the plan called "large" now holds
 only 50 tracks, and the one it called "small" holds 150. Names above reflect
 sizes measured at capture time (2026-08-27), not the ids' original labels.
+
+### Album
+
+The 15-track fixture (`6ymZBbRSmzAvoSGmwAFoxm`) was captured whole in one
+`albumUnion` response, which the original writeup (above) mistook for "albums
+don't paginate." A fix-wave investigation against `5s5svl5DzlSmEvkjuL8Upw`
+("60 Original Hits", declared 60 tracks) found otherwise: **albums over ~50
+tracks split across multiple `pathfinder/v2/query` responses**, the same way
+large playlists do, just without `pagingInfo`:
+
+```
+resp 1: items=50 total=60 hasUri=true   pagingInfo=undefined   trackNumber 1..50
+resp 2: items=10 total=60 hasUri=false  pagingInfo=undefined   trackNumber 51..60
+```
+
+Two things distinguish this from the playlist case:
+
+- **No `pagingInfo`/offset at all** on either response — `content.pagingInfo`
+  is a `playlistV2`-only field. An early pass at this fix concluded from that
+  absence that albums carry no positional signal whatsoever and proposed
+  concatenating batches in arrival order. That is wrong: every
+  `tracksV2.items[].track` entry carries its own **`discNumber` and
+  `trackNumber`**, running 1..50 then 51..60 across the two responses above.
+  That's Spotify's own absolute position for the item, serving the same role
+  `pagingInfo.offset` serves for a playlist — so albums are keyed by
+  `(discNumber, trackNumber)` (`albumItemsByPosition` in `src/normalize.ts`),
+  not concatenated by arrival order.
+- **The second (and any later) batch has no `uri`** on its `albumUnion` — only
+  the first batch is also the entity-bearing response. Where the playlist
+  page-gathering loop uses "`content.pagingInfo` present" as its
+  uri-independent filter, the album loop can't: there is no `pagingInfo` to
+  check. It uses `tracksV2.totalCount` matching the entity's declared total
+  instead — the only discriminator the shape offers, with the caveat spelled
+  out in `albumItemsByPosition`'s doc comment: it can't tell apart two
+  different albums that happen to declare the same track count in the same
+  recording.
+
+Live re-verification after the fix (see the task report for the exact
+recovered counts): both `5s5svl5DzlSmEvkjuL8Upw` and `1ff9TZHVP9QNfXqL3pwrTk`
+(each declaring 60 tracks) resolve to all 60, in `trackNumber` order, sourced
+from two `tracksV2` batches per album, keyed and deduplicated exactly as
+described above.
