@@ -352,6 +352,79 @@ describe('extract', () => {
     }
   }, 20_000)
 
+  // Album counterpart of the playlist test above. These are two different
+  // behaviours, not one tested twice: they read different JSON paths
+  // (tracksV2.totalCount vs content.totalCount) through different helpers
+  // (albumTotalCount vs playlistTotalCount) -- fix round 2 found that the
+  // playlist branch alone being tested left the album branch's own
+  // JSON-path wiring completely unverified.
+  it('throws ExtractionIncompleteError when an album falls short of its declared track total', async () => {
+    const iaCfg = loadConfig({ POOL_SIZE: '1' })
+    const iaPool = await createPool(iaCfg)
+    try {
+      const id = 'incompleteAlbumId'
+      const page = await routedPage(iaPool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: `<html><body><script>fetch('https://api-partner.spotify.com/pathfinder/v2/query')</script></body></html>`,
+        }),
+      )
+      await page.route('https://api-partner.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              albumUnion: {
+                __typename: 'Album',
+                name: 'Incomplete Album',
+                uri: `spotify:album:${id}`,
+                artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+                coverArt: { sources: [{ url: 'https://img.example/album.jpg', width: 640, height: 640 }] },
+                tracksV2: {
+                  // Declares 5 tracks total; this single response carries 2.
+                  totalCount: 5,
+                  items: [
+                    {
+                      track: {
+                        name: 'Track A',
+                        uri: 'spotify:track:ia1',
+                        artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+                        duration: { totalMilliseconds: 200_000 },
+                      },
+                    },
+                    {
+                      track: {
+                        name: 'Track B',
+                        uri: 'spotify:track:ia2',
+                        artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+                        duration: { totalMilliseconds: 200_000 },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+        }),
+      )
+
+      let caught: unknown
+      try {
+        await extract('album', id, iaPool, iaCfg)
+      } catch (err) {
+        caught = err
+      }
+      expect(caught).toBeInstanceOf(ExtractionIncompleteError)
+      expect(caught).not.toBeInstanceOf(ExtractionEmptyError)
+      expect(caught).not.toBeInstanceOf(NotFoundError)
+    } finally {
+      await iaPool.close()
+    }
+  }, 20_000)
+
   // The regression test for the two historical scroll bugs (see
   // docs/captured-shapes.md, "Pagination"): page.mouse.wheel firing at the
   // cursor's default (0,0) instead of the list container, and jumping
