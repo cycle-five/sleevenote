@@ -2981,35 +2981,6 @@
     }
   },
   {
-    "url": "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=499407&totpServer=499407&totpVer=61",
-    "status": 200,
-    "body": {
-      "clientId": "d8a5ed958d274c2e8ee717e6a4b0971d",
-      "accessToken": "BQDH-5JstEjtE_hP0h17Al0-0XUZTueuBET1bS8qPy6vOxsRyQw-6f1_nkb6bgdRnDoDHTQ2g3eMiNCTR-rRhgE_wA-M43Jk6GeGl5R8vUfOYGDKqK7YatQC7x5-FwVXPqRtauLGrBis",
-      "accessTokenExpirationTimestampMs": 1787861653036,
-      "isAnonymous": true,
-      "_notes": "Usage of this endpoint is not permitted under the Spotify Developer Terms and Developer Policy, and applicable law"
-    }
-  },
-  {
-    "url": "https://apresolve.spotify.com/?type=dealer-g2&type=spclient",
-    "status": 200,
-    "body": {
-      "dealer-g2": [
-        "gue1-dealer.g2.spotify.com:443",
-        "guc3-dealer.g2.spotify.com:443",
-        "gew1-dealer.g2.spotify.com:443",
-        "gew4-dealer.g2.spotify.com:443"
-      ],
-      "spclient": [
-        "gue1-spclient.spotify.com:443",
-        "guc3-spclient.spotify.com:443",
-        "gew1-spclient.spotify.com:443",
-        "gew4-spclient.spotify.com:443"
-      ]
-    }
-  },
-  {
     "url": "https://apresolve.spotify.com/?type=dealer-g2&type=spclient",
     "status": 200,
     "body": {
@@ -3033,12 +3004,61 @@
     "body": {}
   },
   {
+    "url": "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=644755&totpServer=644755&totpVer=61",
+    "status": 200,
+    "body": {
+      "clientId": "d8a5ed958d274c2e8ee717e6a4b0971d",
+      "accessToken": "BQB4q_v94bv2TfKdUrx3N3DcAuhFFf5hKvq_g4mAGWdJrN7mW0Y1ScsCl54KV2P6p5_AR_0UTGByF5yHGScLa1_rL1OmL7NPXPR6f0oly_yQqf6_oa5faiERPL2goFqsuLDyKAlUq9Dz",
+      "accessTokenExpirationTimestampMs": 1787862817490,
+      "isAnonymous": true,
+      "_notes": "Usage of this endpoint is not permitted under the Spotify Developer Terms and Developer Policy, and applicable law"
+    }
+  },
+  {
+    "url": "https://apresolve.spotify.com/?type=dealer-g2&type=spclient",
+    "status": 200,
+    "body": {
+      "dealer-g2": [
+        "gue1-dealer.g2.spotify.com:443",
+        "guc3-dealer.g2.spotify.com:443",
+        "gew1-dealer.g2.spotify.com:443",
+        "gew4-dealer.g2.spotify.com:443"
+      ],
+      "spclient": [
+        "gue1-spclient.spotify.com:443",
+        "guc3-spclient.spotify.com:443",
+        "gew1-spclient.spotify.com:443",
+        "gew4-spclient.spotify.com:443"
+      ]
+    }
+  },
+  {
+    "url": "https://clienttoken.spotify.com/v1/clienttoken",
+    "status": 200,
+    "body": {
+      "response_type": "RESPONSE_GRANTED_TOKEN_RESPONSE",
+      "granted_token": {
+        "token": "AAFoyIJqWBb4a7ZHFGkFaN5jl62WHG0fYwhvmDzJR+6TOSDT/pxu/4HmXSfhqGaHpCZvFT4j5Uz5TdxOhuXUJ8U5czzoZzIh3xx98Jt5nSJmaF26MgwSOIIynww43xReJ/WG7iVREadrAuADDBm4VTGpsVfDFC/vEW/kjPj42FZQxvUeghlx/TXxwA16TK8Ha6OyLCn7fy6eqa+NhSQxBnlneWAuW9ShF+zZOH1H6+I2hOGBsLvvdVE/lcEvWfXvIhyo1gOFxZ3kF/1VoeWEIAeawqIdYs4/uxj4EVbeU3ipU9QPVwQGqLpBbaPx5/PTPLzzbyHHjZb0BFDB0HyAGEWgKzV80f+DdlXaHvpB8x46VIfQn3jP7T2oYNsv9Y8Kn7qZnN8HHMUTj8Wh13s5aZA2lVVdW9hj",
+        "expires_after_seconds": 1216800,
+        "refresh_after_seconds": 1209600,
+        "domains": [
+          {
+            "domain": "spotify.com"
+          },
+          {
+            "domain": "spotify.net"
+          }
+        ]
+      }
+    }
+  },
+  {
     "url": "https://gue1-spclient.spotify.com/remote-config-resolver/v3/unauth/configuration",
     "status": 200,
     "body": {
       "configuration": {
-        "configurationAssignmentId": "b343975b-78e1-aae0-7582-08343619a4e5:0",
-        "fetchTimeMillis": "1787858821700",
+        "configurationAssignmentId": "a42cd0a7-3d39-b113-b9b5-59f9da8175ad:0",
+        "fetchTimeMillis": "1787859541549",
         "assignedValues": [
           {
             "propertyId": {
@@ -3083,7 +3103,7 @@
             }
           }
         ],
-        "policySnapshotId": "500083"
+        "policySnapshotId": "500094"
       }
     }
   },
@@ -3093,46 +3113,19 @@
     "body": {
       "dealer-g2": [
         "gue1-dealer.g2.spotify.com:443",
-        "gae2-dealer.g2.spotify.com:443",
+        "guc3-dealer.g2.spotify.com:443",
         "gew1-dealer.g2.spotify.com:443",
         "gew4-dealer.g2.spotify.com:443"
       ],
       "spclient": [
         "gue1-spclient.spotify.com:443",
-        "gae2-spclient.spotify.com:443",
+        "guc3-spclient.spotify.com:443",
         "gew1-spclient.spotify.com:443",
         "gew4-spclient.spotify.com:443"
       ]
     }
   },
   {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
-  },
-  {
-    "url": "https://clienttoken.spotify.com/v1/clienttoken",
-    "status": 200,
-    "body": {
-      "response_type": "RESPONSE_GRANTED_TOKEN_RESPONSE",
-      "granted_token": {
-        "token": "AAH03Gf4454MctIFeGW54CfJVfn6Shurwyg2l6EQW4//oD7R2bMjmRN129nVmEciKXDBx4BxO87T5cphNs0cEznjShdcrty9vHb7TLLV/OQ654BMSFJKOwXQqUxqLrUF/a1OOdwVs7QSznczez1yJ24rCsCJZlN0uwCpo+Po5/UDdIcb3SV43su/Omnkrt6SUw2PlDLV6uZ7IDaeTiRAUToHdoGt+nVt8NSw1cMBOuwLpLthLFcJKMxzs7jOh6b4FDmCNVFjDJzR7D9XvRTqdvjmLTKjXGLHj9FkMR0iwzd+X0Bc6rWBUpryeKDSjYWbK7UE91+s1+4d/VlzNtYQ/ZjL+xqBCIc1hu693lbvoNUhH9ZGJA5gW6nK11+lkXnt9WtT9xR0L8A4USenLigChWUEW+6koQU9",
-        "expires_after_seconds": 1216800,
-        "refresh_after_seconds": 1209600,
-        "domains": [
-          {
-            "domain": "spotify.com"
-          },
-          {
-            "domain": "spotify.net"
-          }
-        ]
-      }
-    }
-  },
-  {
     "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
     "status": 200,
     "body": {}
@@ -3141,13 +3134,6 @@
     "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
     "status": 200,
     "body": {}
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
   },
   {
     "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
@@ -3759,18 +3745,6 @@
     }
   },
   {
-    "url": "https://spclient.wg.spotify.com/library-import/v1/eligible",
-    "status": 200,
-    "body": {}
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
-  },
-  {
     "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
     "status": 200,
     "body": {
@@ -3795,6 +3769,11 @@
     }
   },
   {
+    "url": "https://spclient.wg.spotify.com/library-import/v1/eligible",
+    "status": 200,
+    "body": {}
+  },
+  {
     "url": "https://api-partner.spotify.com/pathfinder/v2/query",
     "status": 200,
     "body": {
@@ -3804,6 +3783,20 @@
           "message": "Object with uri 'spotify:playlist:37i9dQZF1EYkqdzj48dyYq' not found"
         }
       }
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
     }
   },
   {
@@ -10438,6 +10431,13 @@
     }
   },
   {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
     "url": "https://api-partner.spotify.com/pathfinder/v2/query",
     "status": 200,
     "body": {
@@ -10469,8 +10469,8 @@
           "playcount": "410963790",
           "saved": false,
           "sharingInfo": {
-            "shareId": "_5QcMrG4RtK4BYPPMlCobg",
-            "shareUrl": "https://open.spotify.com/track/0c6xIDDpzE81m2q797ordA?si=_5QcMrG4RtK4BYPPMlCobg"
+            "shareId": "x7rP29K_RaW8kCkucWaSww",
+            "shareUrl": "https://open.spotify.com/track/0c6xIDDpzE81m2q797ordA?si=x7rP29K_RaW8kCkucWaSww"
           },
           "trackNumber": 1,
           "uri": "spotify:track:0c6xIDDpzE81m2q797ordA",
@@ -10609,8 +10609,8 @@
               "playable": true
             },
             "sharingInfo": {
-              "shareId": "IgZlj4ALT32Fp07lDoc9Ww",
-              "shareUrl": "https://open.spotify.com/album/44Wg9gZPHK8MebSuBpq63k?si=IgZlj4ALT32Fp07lDoc9Ww"
+              "shareId": "V40SjjBJRGutuGAdtFsqZQ",
+              "shareUrl": "https://open.spotify.com/album/44Wg9gZPHK8MebSuBpq63k?si=V40SjjBJRGutuGAdtFsqZQ"
             },
             "tracks": {
               "items": [
@@ -10742,8 +10742,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "s3x0CYWUTFOYjoszeuxEBQ",
-                                "shareUrl": "https://open.spotify.com/album/5qGd8NgXosVwCRSa4KFLl2?si=s3x0CYWUTFOYjoszeuxEBQ"
+                                "shareId": "8NuWK3xQTKOIy5DGu2YsKA",
+                                "shareUrl": "https://open.spotify.com/album/5qGd8NgXosVwCRSa4KFLl2?si=8NuWK3xQTKOIy5DGu2YsKA"
                               },
                               "tracks": {
                                 "items": [
@@ -10836,8 +10836,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "YAmnpqJOSPK5kEcXTJSPuA",
-                                "shareUrl": "https://open.spotify.com/album/57gkEM50khjdAC57UXzZWU?si=YAmnpqJOSPK5kEcXTJSPuA"
+                                "shareId": "XnCpZRiXQ8SohLABC5Jsqw",
+                                "shareUrl": "https://open.spotify.com/album/57gkEM50khjdAC57UXzZWU?si=XnCpZRiXQ8SohLABC5Jsqw"
                               },
                               "tracks": {
                                 "items": [
@@ -10930,8 +10930,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "2uwTQnSDRSuo383P9vj1wA",
-                                "shareUrl": "https://open.spotify.com/album/1Y5hRxkAfCwSvukVi7pgh1?si=2uwTQnSDRSuo383P9vj1wA"
+                                "shareId": "ysYp1_yHTdGdlc8xz9e2iA",
+                                "shareUrl": "https://open.spotify.com/album/1Y5hRxkAfCwSvukVi7pgh1?si=ysYp1_yHTdGdlc8xz9e2iA"
                               },
                               "tracks": {
                                 "items": [
@@ -11048,8 +11048,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "EWH2wD3VQBWuU5kzy9cJmg",
-                                "shareUrl": "https://open.spotify.com/album/1tAbo8d7jkigBwC0ILVGvC?si=EWH2wD3VQBWuU5kzy9cJmg"
+                                "shareId": "qED6Mk_nRke4bONP1tcWYQ",
+                                "shareUrl": "https://open.spotify.com/album/1tAbo8d7jkigBwC0ILVGvC?si=qED6Mk_nRke4bONP1tcWYQ"
                               },
                               "tracks": {
                                 "items": [
@@ -11154,8 +11154,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "9KrlFHrASCiNp-uTRSk1CQ",
-                                "shareUrl": "https://open.spotify.com/album/2esSZWmdzMPyQsszbsX0rr?si=9KrlFHrASCiNp-uTRSk1CQ"
+                                "shareId": "3Ue7GZmMSlCI6M0YXT9-iw",
+                                "shareUrl": "https://open.spotify.com/album/2esSZWmdzMPyQsszbsX0rr?si=3Ue7GZmMSlCI6M0YXT9-iw"
                               },
                               "tracks": {
                                 "items": [
@@ -11278,8 +11278,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "020aYKNNT6qWiyi-uonUww",
-                                "shareUrl": "https://open.spotify.com/album/44Wg9gZPHK8MebSuBpq63k?si=020aYKNNT6qWiyi-uonUww"
+                                "shareId": "2VSDyGjqSv-YFEoFbQTtKg",
+                                "shareUrl": "https://open.spotify.com/album/44Wg9gZPHK8MebSuBpq63k?si=2VSDyGjqSv-YFEoFbQTtKg"
                               },
                               "tracks": {
                                 "items": [
@@ -11410,8 +11410,8 @@
                           "playable": true
                         },
                         "sharingInfo": {
-                          "shareId": "dsDzKrIpQwqimWMY_cK-8Q",
-                          "shareUrl": "https://open.spotify.com/album/2esSZWmdzMPyQsszbsX0rr?si=dsDzKrIpQwqimWMY_cK-8Q"
+                          "shareId": "aNkTTLXiSAWXY7h7nooszQ",
+                          "shareUrl": "https://open.spotify.com/album/2esSZWmdzMPyQsszbsX0rr?si=aNkTTLXiSAWXY7h7nooszQ"
                         },
                         "tracks": {
                           "items": [
@@ -11534,8 +11534,8 @@
                           "playable": true
                         },
                         "sharingInfo": {
-                          "shareId": "oQI9IqqCS32-uE3QtC0FXQ",
-                          "shareUrl": "https://open.spotify.com/album/5BxB49zq4P3MiCEB4HokzF?si=oQI9IqqCS32-uE3QtC0FXQ"
+                          "shareId": "wFn1EYwaT5-s_qmbOlC-jQ",
+                          "shareUrl": "https://open.spotify.com/album/5BxB49zq4P3MiCEB4HokzF?si=wFn1EYwaT5-s_qmbOlC-jQ"
                         },
                         "tracks": {
                           "items": [
@@ -11586,8 +11586,8 @@
                           "playable": true
                         },
                         "sharingInfo": {
-                          "shareId": "Xr6J-XeAShy2uRKwJN7Sug",
-                          "shareUrl": "https://open.spotify.com/album/6a9UZpJMSoH4QiUwxPoQg3?si=Xr6J-XeAShy2uRKwJN7Sug"
+                          "shareId": "wEuOcThPRmyyx-yBgqsP5w",
+                          "shareUrl": "https://open.spotify.com/album/6a9UZpJMSoH4QiUwxPoQg3?si=wEuOcThPRmyyx-yBgqsP5w"
                         },
                         "tracks": {
                           "items": [
@@ -11638,8 +11638,8 @@
                           "playable": true
                         },
                         "sharingInfo": {
-                          "shareId": "2PzZtMDpQ22gzEsrd35jkw",
-                          "shareUrl": "https://open.spotify.com/album/4nZaFHrYv4ojAxOWLBtMT2?si=2PzZtMDpQ22gzEsrd35jkw"
+                          "shareId": "jLfUM5JkS2G75F3eXPm7hQ",
+                          "shareUrl": "https://open.spotify.com/album/4nZaFHrYv4ojAxOWLBtMT2?si=jLfUM5JkS2G75F3eXPm7hQ"
                         },
                         "tracks": {
                           "items": [
@@ -11720,8 +11720,8 @@
                           "playable": true
                         },
                         "sharingInfo": {
-                          "shareId": "lokJOZZdS5uaqCfcLhyhxA",
-                          "shareUrl": "https://open.spotify.com/album/3M0OxNR7sHtrA4I42ETvjI?si=lokJOZZdS5uaqCfcLhyhxA"
+                          "shareId": "2nK5tlThToitGcooX_oZZQ",
+                          "shareUrl": "https://open.spotify.com/album/3M0OxNR7sHtrA4I42ETvjI?si=2nK5tlThToitGcooX_oZZQ"
                         },
                         "tracks": {
                           "items": [
@@ -11772,8 +11772,8 @@
                           "playable": true
                         },
                         "sharingInfo": {
-                          "shareId": "5p0MNexTR1OmrgGeJKDXyA",
-                          "shareUrl": "https://open.spotify.com/album/455CmcER7FNeMwmpN4ND4n?si=5p0MNexTR1OmrgGeJKDXyA"
+                          "shareId": "9EeIS_UkRDq1OPhtdEpXgA",
+                          "shareUrl": "https://open.spotify.com/album/455CmcER7FNeMwmpN4ND4n?si=9EeIS_UkRDq1OPhtdEpXgA"
                         },
                         "tracks": {
                           "items": [
@@ -11836,8 +11836,8 @@
                           "playable": true
                         },
                         "sharingInfo": {
-                          "shareId": "8wlYUmrVQzmNMQHuArzPrQ",
-                          "shareUrl": "https://open.spotify.com/album/1tAbo8d7jkigBwC0ILVGvC?si=8wlYUmrVQzmNMQHuArzPrQ"
+                          "shareId": "mUmyindjTIuvix6O9NaJGw",
+                          "shareUrl": "https://open.spotify.com/album/1tAbo8d7jkigBwC0ILVGvC?si=mUmyindjTIuvix6O9NaJGw"
                         },
                         "tracks": {
                           "items": [
@@ -11936,8 +11936,8 @@
                           "playable": true
                         },
                         "sharingInfo": {
-                          "shareId": "cuycWIBpTlCw67eMRrgZ3A",
-                          "shareUrl": "https://open.spotify.com/album/77Uz7h0h6LSw00TuPue68e?si=cuycWIBpTlCw67eMRrgZ3A"
+                          "shareId": "kOBMWZAUQreEQs-V2pPd9g",
+                          "shareUrl": "https://open.spotify.com/album/77Uz7h0h6LSw00TuPue68e?si=kOBMWZAUQreEQs-V2pPd9g"
                         },
                         "tracks": {
                           "items": [
@@ -12006,8 +12006,8 @@
                           "playable": true
                         },
                         "sharingInfo": {
-                          "shareId": "0M3rBUEaSJqF5_cqCiQUqg",
-                          "shareUrl": "https://open.spotify.com/album/5qGd8NgXosVwCRSa4KFLl2?si=0M3rBUEaSJqF5_cqCiQUqg"
+                          "shareId": "MyWv79nzQ7KwEU9DtLr-0Q",
+                          "shareUrl": "https://open.spotify.com/album/5qGd8NgXosVwCRSa4KFLl2?si=MyWv79nzQ7KwEU9DtLr-0Q"
                         },
                         "tracks": {
                           "items": [
@@ -12094,8 +12094,8 @@
                           "playable": true
                         },
                         "sharingInfo": {
-                          "shareId": "mo5fX-AvQMCmHgpa5DfncA",
-                          "shareUrl": "https://open.spotify.com/album/4tFtEgNv9YmBySO14WuXS8?si=mo5fX-AvQMCmHgpa5DfncA"
+                          "shareId": "5zA92NWOR-C12Z-oxPUISw",
+                          "shareUrl": "https://open.spotify.com/album/4tFtEgNv9YmBySO14WuXS8?si=5zA92NWOR-C12Z-oxPUISw"
                         },
                         "tracks": {
                           "items": [
@@ -12183,8 +12183,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "wiWjHN1YR5KXy9du_Qq1Xg",
-                                "shareUrl": "https://open.spotify.com/album/0IgNrso6IFllt8IIz0qLbe?si=wiWjHN1YR5KXy9du_Qq1Xg"
+                                "shareId": "CZ8oV4a9R7eWf28p9D3KbQ",
+                                "shareUrl": "https://open.spotify.com/album/0IgNrso6IFllt8IIz0qLbe?si=CZ8oV4a9R7eWf28p9D3KbQ"
                               },
                               "tracks": {
                                 "items": [
@@ -12241,8 +12241,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "Ir9NgW9PQguxZz8gvIKlAg",
-                                "shareUrl": "https://open.spotify.com/album/5aF2Pmze1s9kesq6l0bJZq?si=Ir9NgW9PQguxZz8gvIKlAg"
+                                "shareId": "aCSRrYkRTiyaF9QwhmZTMA",
+                                "shareUrl": "https://open.spotify.com/album/5aF2Pmze1s9kesq6l0bJZq?si=aCSRrYkRTiyaF9QwhmZTMA"
                               },
                               "tracks": {
                                 "items": [
@@ -12299,8 +12299,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "pzlRwu3bRAWUH2T2J77nnA",
-                                "shareUrl": "https://open.spotify.com/album/0sBFTmC0IfoBN9zAiXmsVb?si=pzlRwu3bRAWUH2T2J77nnA"
+                                "shareId": "WlWAj_xYQqGyNtwrVsKvrA",
+                                "shareUrl": "https://open.spotify.com/album/0sBFTmC0IfoBN9zAiXmsVb?si=WlWAj_xYQqGyNtwrVsKvrA"
                               },
                               "tracks": {
                                 "items": [
@@ -12357,8 +12357,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "e3an4J7xQMaMLIh6WVt-Vg",
-                                "shareUrl": "https://open.spotify.com/album/5BxB49zq4P3MiCEB4HokzF?si=e3an4J7xQMaMLIh6WVt-Vg"
+                                "shareId": "vhbirctqTu60Cs46784f5Q",
+                                "shareUrl": "https://open.spotify.com/album/5BxB49zq4P3MiCEB4HokzF?si=vhbirctqTu60Cs46784f5Q"
                               },
                               "tracks": {
                                 "items": [
@@ -12415,8 +12415,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "mhov7mjFSI6SSbVOK1OauQ",
-                                "shareUrl": "https://open.spotify.com/album/1ys0w3yGETGtBkOOfp1jkR?si=mhov7mjFSI6SSbVOK1OauQ"
+                                "shareId": "Hxu2bh7USLCbVL6bAhEPAA",
+                                "shareUrl": "https://open.spotify.com/album/1ys0w3yGETGtBkOOfp1jkR?si=Hxu2bh7USLCbVL6bAhEPAA"
                               },
                               "tracks": {
                                 "items": [
@@ -12503,8 +12503,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "GsZbv8ZFSWKhyGSWwa39AQ",
-                                "shareUrl": "https://open.spotify.com/album/5Eoof3irpjGnslFCveAZNy?si=GsZbv8ZFSWKhyGSWwa39AQ"
+                                "shareId": "LNkvWKiTRIeSZ4or8x1NcQ",
+                                "shareUrl": "https://open.spotify.com/album/5Eoof3irpjGnslFCveAZNy?si=LNkvWKiTRIeSZ4or8x1NcQ"
                               },
                               "tracks": {
                                 "items": [
@@ -12561,8 +12561,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "40QZ8294Sh-KE98AlaCApg",
-                                "shareUrl": "https://open.spotify.com/album/6yaKNe0pHdRpzBhGnuHXXw?si=40QZ8294Sh-KE98AlaCApg"
+                                "shareId": "qMhlLU6NSEqLjrYh4HcMHA",
+                                "shareUrl": "https://open.spotify.com/album/6yaKNe0pHdRpzBhGnuHXXw?si=qMhlLU6NSEqLjrYh4HcMHA"
                               },
                               "tracks": {
                                 "items": [
@@ -12619,8 +12619,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "iQrQOhIwRYmbX7WgfUf7GA",
-                                "shareUrl": "https://open.spotify.com/album/72zecELBiclzAcii4lqGoL?si=iQrQOhIwRYmbX7WgfUf7GA"
+                                "shareId": "wdpoVtkCRNKT8tvU-PTzig",
+                                "shareUrl": "https://open.spotify.com/album/72zecELBiclzAcii4lqGoL?si=wdpoVtkCRNKT8tvU-PTzig"
                               },
                               "tracks": {
                                 "items": [
@@ -12689,8 +12689,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "5i5Gd3BUTyijmeBugT1gLA",
-                                "shareUrl": "https://open.spotify.com/album/6aEPsDTwRIh8HmoABmRX7b?si=5i5Gd3BUTyijmeBugT1gLA"
+                                "shareId": "6zGy2-HKSYKyCmOj0tQl3w",
+                                "shareUrl": "https://open.spotify.com/album/6aEPsDTwRIh8HmoABmRX7b?si=6zGy2-HKSYKyCmOj0tQl3w"
                               },
                               "tracks": {
                                 "items": [
@@ -12747,8 +12747,8 @@
                                 "playable": true
                               },
                               "sharingInfo": {
-                                "shareId": "oEc12VRuQh6HrcXQFpUt1g",
-                                "shareUrl": "https://open.spotify.com/album/6uWuAum9VpqxPx84PgvCsY?si=oEc12VRuQh6HrcXQFpUt1g"
+                                "shareId": "8qE-e-wdT0See1JO_7dh2A",
+                                "shareUrl": "https://open.spotify.com/album/6uWuAum9VpqxPx84PgvCsY?si=8qE-e-wdT0See1JO_7dh2A"
                               },
                               "tracks": {
                                 "items": [
@@ -14568,8 +14568,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "bxoEyPf7SCudVJmJEL9TXQ",
-                  "shareUrl": "https://open.spotify.com/album/7bdjtx1RTkWoSoOaIl7a8E?si=bxoEyPf7SCudVJmJEL9TXQ"
+                  "shareId": "XdM5OyJLScC2Uu5Y21fS0Q",
+                  "shareUrl": "https://open.spotify.com/album/7bdjtx1RTkWoSoOaIl7a8E?si=XdM5OyJLScC2Uu5Y21fS0Q"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:7bdjtx1RTkWoSoOaIl7a8E"
@@ -14617,8 +14617,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "dVE1uCA3RnuDqJXI6qXcPA",
-                  "shareUrl": "https://open.spotify.com/album/2S56F6bIk01HboGbJJJ1IQ?si=dVE1uCA3RnuDqJXI6qXcPA"
+                  "shareId": "-3fjUzuNTsicT0RXEq4BvQ",
+                  "shareUrl": "https://open.spotify.com/album/2S56F6bIk01HboGbJJJ1IQ?si=-3fjUzuNTsicT0RXEq4BvQ"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:2S56F6bIk01HboGbJJJ1IQ"
@@ -14666,8 +14666,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "zbgpO1MQTkqWv5wjKXwrBQ",
-                  "shareUrl": "https://open.spotify.com/album/5XyJzEROSmup2TcWmVjTIt?si=zbgpO1MQTkqWv5wjKXwrBQ"
+                  "shareId": "1CNFm6vvR7W0DOfbAteJZA",
+                  "shareUrl": "https://open.spotify.com/album/5XyJzEROSmup2TcWmVjTIt?si=1CNFm6vvR7W0DOfbAteJZA"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:5XyJzEROSmup2TcWmVjTIt"
@@ -14715,8 +14715,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "3KiSFZpYSSWrveFajzZ8RQ",
-                  "shareUrl": "https://open.spotify.com/album/6AlOjPdNpM41lMVSjjsrUM?si=3KiSFZpYSSWrveFajzZ8RQ"
+                  "shareId": "t2TXrqVfQpCJO5cgxK3v1A",
+                  "shareUrl": "https://open.spotify.com/album/6AlOjPdNpM41lMVSjjsrUM?si=t2TXrqVfQpCJO5cgxK3v1A"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:6AlOjPdNpM41lMVSjjsrUM"
@@ -14764,8 +14764,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "kfEYyJinT62b3OHo2GWsYg",
-                  "shareUrl": "https://open.spotify.com/album/09mWpzpUOSjjvK2iNqEIYn?si=kfEYyJinT62b3OHo2GWsYg"
+                  "shareId": "u-bEkAtjQvedsqglSIPhww",
+                  "shareUrl": "https://open.spotify.com/album/09mWpzpUOSjjvK2iNqEIYn?si=u-bEkAtjQvedsqglSIPhww"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:09mWpzpUOSjjvK2iNqEIYn"
@@ -14813,8 +14813,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "qbtbiiS7RG2MkPV7h8Ts6g",
-                  "shareUrl": "https://open.spotify.com/album/5uRY0boZn48gDio0ASlgI0?si=qbtbiiS7RG2MkPV7h8Ts6g"
+                  "shareId": "CVXQbkZvS5q-W367NBDNeQ",
+                  "shareUrl": "https://open.spotify.com/album/5uRY0boZn48gDio0ASlgI0?si=CVXQbkZvS5q-W367NBDNeQ"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:5uRY0boZn48gDio0ASlgI0"
@@ -14862,8 +14862,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "dpAfmJsNT5CiXVRpYag1YQ",
-                  "shareUrl": "https://open.spotify.com/album/7w19PFbxAjwZ7UVNp9z0uT?si=dpAfmJsNT5CiXVRpYag1YQ"
+                  "shareId": "QPblTUhnQk2U_oH6PdMTvw",
+                  "shareUrl": "https://open.spotify.com/album/7w19PFbxAjwZ7UVNp9z0uT?si=QPblTUhnQk2U_oH6PdMTvw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:7w19PFbxAjwZ7UVNp9z0uT"
@@ -14911,8 +14911,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "yhHli8G8Sl-BHlSKn770-A",
-                  "shareUrl": "https://open.spotify.com/album/4oVG376KpWeBaxrKqRxVri?si=yhHli8G8Sl-BHlSKn770-A"
+                  "shareId": "PVhHz1dTRRGp_M6Uzc7yZQ",
+                  "shareUrl": "https://open.spotify.com/album/4oVG376KpWeBaxrKqRxVri?si=PVhHz1dTRRGp_M6Uzc7yZQ"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:4oVG376KpWeBaxrKqRxVri"
@@ -14960,8 +14960,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "LCCANt4OTsSAY-ue3kg5Kw",
-                  "shareUrl": "https://open.spotify.com/album/48zisMeiXniWLzOQghbPqS?si=LCCANt4OTsSAY-ue3kg5Kw"
+                  "shareId": "amZf0J8hQmmAT9408L9KFA",
+                  "shareUrl": "https://open.spotify.com/album/48zisMeiXniWLzOQghbPqS?si=amZf0J8hQmmAT9408L9KFA"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:48zisMeiXniWLzOQghbPqS"
@@ -15009,8 +15009,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "hRZBq5HMQxSY75eAHNZyNg",
-                  "shareUrl": "https://open.spotify.com/album/2xpjgSvZVYjzdlWxeAJFy8?si=hRZBq5HMQxSY75eAHNZyNg"
+                  "shareId": "ExUmGa2GThmh-wYSMW_9Ww",
+                  "shareUrl": "https://open.spotify.com/album/2xpjgSvZVYjzdlWxeAJFy8?si=ExUmGa2GThmh-wYSMW_9Ww"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:2xpjgSvZVYjzdlWxeAJFy8"
@@ -15064,8 +15064,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "Z34WgkbhS3OpTXE4m2AGOw",
-                  "shareUrl": "https://open.spotify.com/album/2rqjmynngV4AmGoL1ZEuwM?si=Z34WgkbhS3OpTXE4m2AGOw"
+                  "shareId": "z-8gocKmRS-zh0tY6BMLhA",
+                  "shareUrl": "https://open.spotify.com/album/2rqjmynngV4AmGoL1ZEuwM?si=z-8gocKmRS-zh0tY6BMLhA"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:2rqjmynngV4AmGoL1ZEuwM"
@@ -15113,8 +15113,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "n9t0ftyuRNSbFl6W6UKS1g",
-                  "shareUrl": "https://open.spotify.com/album/0uMIzWh1uEpHEBell4rlF8?si=n9t0ftyuRNSbFl6W6UKS1g"
+                  "shareId": "nzUqatFKTmilFtGwKTqfkA",
+                  "shareUrl": "https://open.spotify.com/album/0uMIzWh1uEpHEBell4rlF8?si=nzUqatFKTmilFtGwKTqfkA"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:0uMIzWh1uEpHEBell4rlF8"
@@ -15162,8 +15162,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "teA0oxEbRdWme9nFrH2LGw",
-                  "shareUrl": "https://open.spotify.com/album/66KCBRiOFSs9bki2A15WlB?si=teA0oxEbRdWme9nFrH2LGw"
+                  "shareId": "XyvNcTzJTJ2hXdsfIyyiZg",
+                  "shareUrl": "https://open.spotify.com/album/66KCBRiOFSs9bki2A15WlB?si=XyvNcTzJTJ2hXdsfIyyiZg"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:66KCBRiOFSs9bki2A15WlB"
@@ -15211,8 +15211,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "Ii3e99V_R2yNNcn_j3TcsQ",
-                  "shareUrl": "https://open.spotify.com/album/4QcXq4vTVN7dFb7bZa9jG2?si=Ii3e99V_R2yNNcn_j3TcsQ"
+                  "shareId": "l1H6zbbtQ1qctn63GmH1eA",
+                  "shareUrl": "https://open.spotify.com/album/4QcXq4vTVN7dFb7bZa9jG2?si=l1H6zbbtQ1qctn63GmH1eA"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:4QcXq4vTVN7dFb7bZa9jG2"
@@ -15260,8 +15260,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "tu3kOlC1REayFi2A-yitHA",
-                  "shareUrl": "https://open.spotify.com/album/1J6b7W1nSHH7BObK8zIoEY?si=tu3kOlC1REayFi2A-yitHA"
+                  "shareId": "N0UBf1J7SZOS7Va42T_nTA",
+                  "shareUrl": "https://open.spotify.com/album/1J6b7W1nSHH7BObK8zIoEY?si=N0UBf1J7SZOS7Va42T_nTA"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:1J6b7W1nSHH7BObK8zIoEY"
@@ -15309,8 +15309,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "FddjLCGbQj-c4kTcmrgxQA",
-                  "shareUrl": "https://open.spotify.com/album/6edYDxspt9uQj21mbAfFIb?si=FddjLCGbQj-c4kTcmrgxQA"
+                  "shareId": "Wc-wxUStT1-BtNxT3IGI9A",
+                  "shareUrl": "https://open.spotify.com/album/6edYDxspt9uQj21mbAfFIb?si=Wc-wxUStT1-BtNxT3IGI9A"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:6edYDxspt9uQj21mbAfFIb"
@@ -15358,8 +15358,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "JrZhZDNtQ7aGAsPrY8lMrQ",
-                  "shareUrl": "https://open.spotify.com/album/2taGgFWPxGnnmsmdii1LFB?si=JrZhZDNtQ7aGAsPrY8lMrQ"
+                  "shareId": "FnEgV8HSRc6Hiw5lMNjg2A",
+                  "shareUrl": "https://open.spotify.com/album/2taGgFWPxGnnmsmdii1LFB?si=FnEgV8HSRc6Hiw5lMNjg2A"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:2taGgFWPxGnnmsmdii1LFB"
@@ -15407,8 +15407,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "CMuzcix4RUKhKE_RNE_-ww",
-                  "shareUrl": "https://open.spotify.com/album/5bRrEsH3Mjl8O0lpUgdIHI?si=CMuzcix4RUKhKE_RNE_-ww"
+                  "shareId": "p0P7XMypREixifwfvXhrEw",
+                  "shareUrl": "https://open.spotify.com/album/5bRrEsH3Mjl8O0lpUgdIHI?si=p0P7XMypREixifwfvXhrEw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:5bRrEsH3Mjl8O0lpUgdIHI"
@@ -15456,8 +15456,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "UFSIFF0dQMqlTDbL-JX8iA",
-                  "shareUrl": "https://open.spotify.com/album/6Phl1V5P0sPrWJytXHGFeO?si=UFSIFF0dQMqlTDbL-JX8iA"
+                  "shareId": "Qe-uhwC3Q86o7C2_0w3rDQ",
+                  "shareUrl": "https://open.spotify.com/album/6Phl1V5P0sPrWJytXHGFeO?si=Qe-uhwC3Q86o7C2_0w3rDQ"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:6Phl1V5P0sPrWJytXHGFeO"
@@ -15505,8 +15505,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "cn9xI8u8SR-G_-vWa7q7SA",
-                  "shareUrl": "https://open.spotify.com/album/4WzTXHp8bVKkKNu3UQ2Fqu?si=cn9xI8u8SR-G_-vWa7q7SA"
+                  "shareId": "o7AGbiOdRziPBvuWFWy5bQ",
+                  "shareUrl": "https://open.spotify.com/album/4WzTXHp8bVKkKNu3UQ2Fqu?si=o7AGbiOdRziPBvuWFWy5bQ"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:4WzTXHp8bVKkKNu3UQ2Fqu"
@@ -15554,8 +15554,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "5DrlbtITSveP82mB2zzeeQ",
-                  "shareUrl": "https://open.spotify.com/album/16H9XbDP9IxeyOohsXkKXb?si=5DrlbtITSveP82mB2zzeeQ"
+                  "shareId": "JgI7igoHTt2d3B5fLbxfVA",
+                  "shareUrl": "https://open.spotify.com/album/16H9XbDP9IxeyOohsXkKXb?si=JgI7igoHTt2d3B5fLbxfVA"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:16H9XbDP9IxeyOohsXkKXb"
@@ -15603,8 +15603,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "xXFuilpOTFuXuNoNYXOa6A",
-                  "shareUrl": "https://open.spotify.com/album/47C7w4o1resDhr7jvYEpxE?si=xXFuilpOTFuXuNoNYXOa6A"
+                  "shareId": "ZVZIYUxwR1qfId6iTfKe5Q",
+                  "shareUrl": "https://open.spotify.com/album/47C7w4o1resDhr7jvYEpxE?si=ZVZIYUxwR1qfId6iTfKe5Q"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:47C7w4o1resDhr7jvYEpxE"
@@ -15652,8 +15652,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "VgNEeMiAS2adKlm7rkOztA",
-                  "shareUrl": "https://open.spotify.com/album/1v1bEFD6ZgEvAbrMJqK1Oz?si=VgNEeMiAS2adKlm7rkOztA"
+                  "shareId": "VRJ5J53SQd2eZjfO_U6RhQ",
+                  "shareUrl": "https://open.spotify.com/album/1v1bEFD6ZgEvAbrMJqK1Oz?si=VRJ5J53SQd2eZjfO_U6RhQ"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:1v1bEFD6ZgEvAbrMJqK1Oz"
@@ -15701,8 +15701,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "8ToQ1jcsRZKo6oJhug-MEg",
-                  "shareUrl": "https://open.spotify.com/album/5aprcHwM1KJhaY9Kbxkfkn?si=8ToQ1jcsRZKo6oJhug-MEg"
+                  "shareId": "38TOt7XkSmKDRpbn0b73Jw",
+                  "shareUrl": "https://open.spotify.com/album/5aprcHwM1KJhaY9Kbxkfkn?si=38TOt7XkSmKDRpbn0b73Jw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:5aprcHwM1KJhaY9Kbxkfkn"
@@ -15750,8 +15750,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "elLD-_0jQdW_N7L2idUeGw",
-                  "shareUrl": "https://open.spotify.com/album/3CcCqXsbyjCDDSA3omcGoy?si=elLD-_0jQdW_N7L2idUeGw"
+                  "shareId": "MptEOHhcR5ypecaenyJvaA",
+                  "shareUrl": "https://open.spotify.com/album/3CcCqXsbyjCDDSA3omcGoy?si=MptEOHhcR5ypecaenyJvaA"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:3CcCqXsbyjCDDSA3omcGoy"
@@ -15799,8 +15799,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "93I76C8gQw22Nr8Gela2Fg",
-                  "shareUrl": "https://open.spotify.com/album/0ctfduE1sLhqIjbcFokWvv?si=93I76C8gQw22Nr8Gela2Fg"
+                  "shareId": "jtJID5mgT1WPR4-5CslfcQ",
+                  "shareUrl": "https://open.spotify.com/album/0ctfduE1sLhqIjbcFokWvv?si=jtJID5mgT1WPR4-5CslfcQ"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:0ctfduE1sLhqIjbcFokWvv"
@@ -15848,8 +15848,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "urzJ8dJeTge_tOSJBZAUQA",
-                  "shareUrl": "https://open.spotify.com/album/1SrvubPy1Dg2BWJyTMcmgr?si=urzJ8dJeTge_tOSJBZAUQA"
+                  "shareId": "QFM-x2LFSu2_WS5s4pitsQ",
+                  "shareUrl": "https://open.spotify.com/album/1SrvubPy1Dg2BWJyTMcmgr?si=QFM-x2LFSu2_WS5s4pitsQ"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:1SrvubPy1Dg2BWJyTMcmgr"
@@ -15897,8 +15897,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "CCCwhjLWSJGQqUiAZUg_ew",
-                  "shareUrl": "https://open.spotify.com/album/0SxbyB0c1fqXEDA6jnPXiq?si=CCCwhjLWSJGQqUiAZUg_ew"
+                  "shareId": "XhttOV8SQJGygS2le1V09w",
+                  "shareUrl": "https://open.spotify.com/album/0SxbyB0c1fqXEDA6jnPXiq?si=XhttOV8SQJGygS2le1V09w"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:0SxbyB0c1fqXEDA6jnPXiq"
@@ -15946,8 +15946,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "hSlVRE_fRKquq8SbHxyubg",
-                  "shareUrl": "https://open.spotify.com/album/0AUG7Sa8IIiCHTW6GONdf2?si=hSlVRE_fRKquq8SbHxyubg"
+                  "shareId": "SdZmPZjWSeOe8S0Hi4Lylw",
+                  "shareUrl": "https://open.spotify.com/album/0AUG7Sa8IIiCHTW6GONdf2?si=SdZmPZjWSeOe8S0Hi4Lylw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:0AUG7Sa8IIiCHTW6GONdf2"
@@ -15995,8 +15995,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "PEE3i3-jS6SViPEq7yd4Ug",
-                  "shareUrl": "https://open.spotify.com/album/16HVR99NpuRONFToq3hEET?si=PEE3i3-jS6SViPEq7yd4Ug"
+                  "shareId": "iRwCmAd8T4CAUZmPSTpOZg",
+                  "shareUrl": "https://open.spotify.com/album/16HVR99NpuRONFToq3hEET?si=iRwCmAd8T4CAUZmPSTpOZg"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:16HVR99NpuRONFToq3hEET"
@@ -16044,8 +16044,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "q0fc9yBjTHqj7k_ntw4n-A",
-                  "shareUrl": "https://open.spotify.com/album/4phgwA30YOM1BAhJEm96Al?si=q0fc9yBjTHqj7k_ntw4n-A"
+                  "shareId": "3v8eRQOcQ7ypYHSrJL1pow",
+                  "shareUrl": "https://open.spotify.com/album/4phgwA30YOM1BAhJEm96Al?si=3v8eRQOcQ7ypYHSrJL1pow"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:4phgwA30YOM1BAhJEm96Al"
@@ -16093,8 +16093,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "_mmvSbDPTH-E537xyTCHFA",
-                  "shareUrl": "https://open.spotify.com/album/4XbUZbCiZynKWMCWFoNSbY?si=_mmvSbDPTH-E537xyTCHFA"
+                  "shareId": "6jbZ0a3AS3WE4L7Fa9Gsgg",
+                  "shareUrl": "https://open.spotify.com/album/4XbUZbCiZynKWMCWFoNSbY?si=6jbZ0a3AS3WE4L7Fa9Gsgg"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:4XbUZbCiZynKWMCWFoNSbY"
@@ -16142,8 +16142,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "n6rpuLpERi-qmtc0Sn2O6A",
-                  "shareUrl": "https://open.spotify.com/album/0vwDxngkhZuwNbcxzebCXI?si=n6rpuLpERi-qmtc0Sn2O6A"
+                  "shareId": "F1tU4gw9Rk-qttnqz7dpfw",
+                  "shareUrl": "https://open.spotify.com/album/0vwDxngkhZuwNbcxzebCXI?si=F1tU4gw9Rk-qttnqz7dpfw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:0vwDxngkhZuwNbcxzebCXI"
@@ -16191,8 +16191,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "nqRxwkApRuaETR5SJ8LKSw",
-                  "shareUrl": "https://open.spotify.com/album/3IpexNXiKbezuY526S4Jvy?si=nqRxwkApRuaETR5SJ8LKSw"
+                  "shareId": "OX2aJnPVQnCiQBuJhTSmvw",
+                  "shareUrl": "https://open.spotify.com/album/3IpexNXiKbezuY526S4Jvy?si=OX2aJnPVQnCiQBuJhTSmvw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:3IpexNXiKbezuY526S4Jvy"
@@ -16240,8 +16240,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "3LUbR8VIRCSDXWqcElv8Cw",
-                  "shareUrl": "https://open.spotify.com/album/1gKVOJVxDTqw9IaCbKaYd4?si=3LUbR8VIRCSDXWqcElv8Cw"
+                  "shareId": "oWt3KDAPTVCEdL02a5zXRA",
+                  "shareUrl": "https://open.spotify.com/album/1gKVOJVxDTqw9IaCbKaYd4?si=oWt3KDAPTVCEdL02a5zXRA"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:1gKVOJVxDTqw9IaCbKaYd4"
@@ -16289,8 +16289,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "vESV3I4LRCeT1G4oqXkmkA",
-                  "shareUrl": "https://open.spotify.com/album/6zVi5jNALX1GeD3MxiFmqo?si=vESV3I4LRCeT1G4oqXkmkA"
+                  "shareId": "tpBnooHXRoC7795dcvR5tw",
+                  "shareUrl": "https://open.spotify.com/album/6zVi5jNALX1GeD3MxiFmqo?si=tpBnooHXRoC7795dcvR5tw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:6zVi5jNALX1GeD3MxiFmqo"
@@ -16338,8 +16338,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "3HGcE_noRVSn5SuWwYIHzA",
-                  "shareUrl": "https://open.spotify.com/album/5ENrI2pojxE4XhSmncl4cz?si=3HGcE_noRVSn5SuWwYIHzA"
+                  "shareId": "GJIEievMQhqbHGYbESi0kw",
+                  "shareUrl": "https://open.spotify.com/album/5ENrI2pojxE4XhSmncl4cz?si=GJIEievMQhqbHGYbESi0kw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:5ENrI2pojxE4XhSmncl4cz"
@@ -16387,8 +16387,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "JQ5nwariTqqA_XW8jaSVYA",
-                  "shareUrl": "https://open.spotify.com/album/0tRVSbmOwilUucqjzU0fQw?si=JQ5nwariTqqA_XW8jaSVYA"
+                  "shareId": "oB7nbTEUSQOn-idFsNf1iw",
+                  "shareUrl": "https://open.spotify.com/album/0tRVSbmOwilUucqjzU0fQw?si=oB7nbTEUSQOn-idFsNf1iw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:0tRVSbmOwilUucqjzU0fQw"
@@ -16436,8 +16436,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "VsBIpaQZSAGP1fpsGLadFg",
-                  "shareUrl": "https://open.spotify.com/album/5B6XfyHHYawyLkEvNvhSPh?si=VsBIpaQZSAGP1fpsGLadFg"
+                  "shareId": "_MNGzzwqQ_GbZeF_ZZwk4A",
+                  "shareUrl": "https://open.spotify.com/album/5B6XfyHHYawyLkEvNvhSPh?si=_MNGzzwqQ_GbZeF_ZZwk4A"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:5B6XfyHHYawyLkEvNvhSPh"
@@ -16485,8 +16485,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "sSfYIPsmQYCkLtW-q_7JQg",
-                  "shareUrl": "https://open.spotify.com/album/3AWjk0oVV9YAY9r9boiffN?si=sSfYIPsmQYCkLtW-q_7JQg"
+                  "shareId": "eAU-600PTqqIkzxKXQ14Nw",
+                  "shareUrl": "https://open.spotify.com/album/3AWjk0oVV9YAY9r9boiffN?si=eAU-600PTqqIkzxKXQ14Nw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:3AWjk0oVV9YAY9r9boiffN"
@@ -16534,8 +16534,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "tqKjDXXbSQ2Tt1si3DGmcw",
-                  "shareUrl": "https://open.spotify.com/album/4nLyl2aEgi2qQrcPiFlmD7?si=tqKjDXXbSQ2Tt1si3DGmcw"
+                  "shareId": "JxzXUaTjQVywjcxf4bpUqw",
+                  "shareUrl": "https://open.spotify.com/album/4nLyl2aEgi2qQrcPiFlmD7?si=JxzXUaTjQVywjcxf4bpUqw"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:4nLyl2aEgi2qQrcPiFlmD7"
@@ -16595,8 +16595,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "N3LG79lFTzStcuBJUINfZA",
-                  "shareUrl": "https://open.spotify.com/album/6bfkwBrGYKJFk6Z4QVyjxd?si=N3LG79lFTzStcuBJUINfZA"
+                  "shareId": "NyfGASlRQ3WuYGEimBWR_A",
+                  "shareUrl": "https://open.spotify.com/album/6bfkwBrGYKJFk6Z4QVyjxd?si=NyfGASlRQ3WuYGEimBWR_A"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:6bfkwBrGYKJFk6Z4QVyjxd"
@@ -16644,8 +16644,8 @@
                   "playable": true
                 },
                 "sharingInfo": {
-                  "shareId": "TBdI_7tWQBCpKaZG0uqClQ",
-                  "shareUrl": "https://open.spotify.com/album/7BEPVoBcHuTLWpcdj8FhM8?si=TBdI_7tWQBCpKaZG0uqClQ"
+                  "shareId": "SCCseY4TS_imdGXRgsb8mA",
+                  "shareUrl": "https://open.spotify.com/album/7BEPVoBcHuTLWpcdj8FhM8?si=SCCseY4TS_imdGXRgsb8mA"
                 },
                 "type": "ALBUM",
                 "uri": "spotify:album:7BEPVoBcHuTLWpcdj8FhM8"
@@ -16670,6 +16670,554 @@
     }
   },
   {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
+    "status": 200,
+    "body": {
+      "data": {
+        "albumUnion": {
+          "__typename": "Album",
+          "playability": {
+            "playable": true
+          },
+          "tracksV2": {
+            "items": [
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 1
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 251986
+                  },
+                  "name": "Hideaway",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "410963790",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 1,
+                  "uri": "spotify:track:0c6xIDDpzE81m2q797ordA"
+                },
+                "uid": "687b6c8579623a928b7c"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 1
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 197426
+                  },
+                  "name": "No Enemiesz",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "8491520",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 2,
+                  "uri": "spotify:track:0me858TgKS205jGwq1Pjrg"
+                },
+                "uid": "585b4539d1f371e29252"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      },
+                      {
+                        "profile": {
+                          "name": "Mick Jenkins"
+                        },
+                        "uri": "spotify:artist:1FvjvACFvko2Z91IvDljrx"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "EXPLICIT"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 231013
+                  },
+                  "name": "Losin' My Mind",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "3516639",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 3,
+                  "uri": "spotify:track:1kRc6zWGn1OZLNaJD857AR"
+                },
+                "uid": "6abd5401fa19862beacf"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 268933
+                  },
+                  "name": "So Deep",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "4823836",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 4,
+                  "uri": "spotify:track:6MSKX2sY7CALrvEWw0I5XL"
+                },
+                "uid": "8b0138436e4befd78c47"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 230306
+                  },
+                  "name": "Vietnam",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "2227264",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 5,
+                  "uri": "spotify:track:1ABohTpsvc3Avhe1OCVoX7"
+                },
+                "uid": "bd2f261700f1843a305d"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      },
+                      {
+                        "profile": {
+                          "name": "Joey Bada$$"
+                        },
+                        "uri": "spotify:artist:2P5sC9cVZDToPxyomzF1UH"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "EXPLICIT"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 211506
+                  },
+                  "name": "Bad Thing",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "6108718",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 6,
+                  "uri": "spotify:track:51SfkzdK53bds20skhW6Sg"
+                },
+                "uid": "d0873dd7251ffb7f5462"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 1
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 188346
+                  },
+                  "name": "What Is Love",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "27556626",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 7,
+                  "uri": "spotify:track:1YaN0cUxi7I9VTwPl7dOzc"
+                },
+                "uid": "97c4a3af98d1c5cd37d7"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 1
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 226920
+                  },
+                  "name": "Sound Of A Woman",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "4756392",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 8,
+                  "uri": "spotify:track:59n2fhX1wXiT4QwnVP4uHB"
+                },
+                "uid": "111abb7192b1e848010c"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 237093
+                  },
+                  "name": "The Love",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "2467414",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 9,
+                  "uri": "spotify:track:3I9jGLAxYhMymlQmLmamfy"
+                },
+                "uid": "d1b5e6dc1296a7a1d877"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 268093
+                  },
+                  "name": "Piano",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "1970994",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 10,
+                  "uri": "spotify:track:2O8WhzRgPRkymi4cXnp2WM"
+                },
+                "uid": "2cf4ca74d2f5a0f03543"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 1
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 269933
+                  },
+                  "name": "Giant In My Heart",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "23492073",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 11,
+                  "uri": "spotify:track:4FRiP9R772ifRGYCza06sX"
+                },
+                "uid": "77feb9ae3ced59a72f0a"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 212226
+                  },
+                  "name": "Over Myself",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "1691299",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 12,
+                  "uri": "spotify:track:2mR5h9wHGQzPMkcHKavdnz"
+                },
+                "uid": "c99fd24969d3af82cc92"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Kiesza"
+                        },
+                        "uri": "spotify:artist:4zxvC7CRGvggq9EWXOpwAo"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 233146
+                  },
+                  "name": "Cut Me Loose",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "1625323",
+                  "relinkingInformation": null,
+                  "saved": false,
+                  "trackNumber": 13,
+                  "uri": "spotify:track:6hKBbFfF8VepSiEWENNHfT"
+                },
+                "uid": "67d13a25bc25659a9e6c"
+              }
+            ],
+            "totalCount": 13
+          }
+        }
+      }
+    }
+  },
+  {
     "url": "https://api-partner.spotify.com/pathfinder/v2/query",
     "status": 200,
     "body": {
@@ -16679,6 +17227,27 @@
           "message": "Object with uri 'spotify:playlist:37i9dQZF1EYkqdzj48dyYq' not found"
         }
       }
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
     }
   },
   {
@@ -16775,8 +17344,88 @@
           "index": 17,
           "transient": false,
           "reason": 7
+        },
+        {
+          "index": 18,
+          "transient": false,
+          "reason": 7
+        },
+        {
+          "index": 19,
+          "transient": false,
+          "reason": 7
         }
       ]
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
     }
   },
   {
@@ -16796,24 +17445,6 @@
           "message": "Object with uri 'spotify:playlist:37i9dQZF1EYkqdzj48dyYq' not found"
         }
       }
-    }
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/v3/events",
-    "status": 200,
-    "body": {
-      "errors": [
-        {
-          "index": 0,
-          "transient": false,
-          "reason": 7
-        },
-        {
-          "index": 1,
-          "transient": false,
-          "reason": 7
-        }
-      ]
     }
   }
 ]

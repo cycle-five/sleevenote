@@ -111,7 +111,7 @@ present **and** `data.playlistV2.__typename === "Playlist"` (not
 | `url` | — | constructed: `https://open.spotify.com/playlist/<id>` |
 | `image` | `data.playlistV2.images.items[0].sources[0].url` | observed with exactly one item and one source per fixture; `width`/`height` were `null` in both captures |
 | `owner` | `data.playlistV2.ownerV2.data.name` | note the extra `.data` nesting under `ownerV2`; `.username` and `.uri` are also there if needed |
-| `tracks[]` | `data.playlistV2.content.items[].itemV2.data` | see below; **see "Pagination" — this list is incomplete** |
+| `tracks[]` | `data.playlistV2.content.items[].itemV2.data` | see below; **see "Pagination" — a single response only carries one page. Concatenate `content.items` across every matching response in `pagingInfo.offset` order to get the full list.** |
 
 Each `data.playlistV2.content.items[].itemV2.data` maps to a `Track`:
 
@@ -132,44 +132,63 @@ items:
 
 ## Pagination
 
-**Observed track count for `playlist-large` (`37i9dQZF1DXcBWIGoYBM5M`,
-"Today's Top Hits"): 25 tracks recovered.**
-**Real length, per `data.playlistV2.content.totalCount` in the same response:
-50.**
-**Scrolling did not produce additional pages.**
+**Observed track count for `playlist-large` (`37i9dQZF1DX4o1oenSJRJd`, "All
+Out 2000s"): 150 tracks recovered.**
+**Real length, per `data.playlistV2.content.totalCount`: 150.**
+**Scrolling produced every page; recovery is complete.**
 
-Across all 33 recorded responses for `playlist-large`, exactly one response
-carries `data.playlistV2.__typename === "Playlist"` with a populated
-`content`; its `pagingInfo` is `{ "limit": 25, "offset": 0 }`. The probe
-scrolled to the bottom 30 times (`page.mouse.wheel(0, 20_000)`, 400ms apart,
-plus a final 3s settle) after that response arrived, and no further
-`pathfinder/v2/query` response with `offset > 0` — or any other JSON response
-carrying additional tracks — was ever recorded. The 25 remaining tracks
-(offset 25–49) were never fetched by the browser.
+The first capture attempt (see git history: commit `fcd889a` and the fix in
+`8c27e02`) used `page.mouse.wheel(0, 20_000)`, which fires at the mouse
+cursor's position — defaulting to `(0,0)`, outside Spotify's virtualized
+track-list container — and scrolled nothing at all. `pagingInfo.offset`
+stayed pinned at `0` through 30 scroll attempts and only the first 25 of the
+playlist's tracks were ever fetched. That was reported and correctly
+diagnosed as an implementation defect in the probe, not a limit of
+interception itself; see the Task 1 report
+(`.superpowers/sdd/2026-08-27-sleevenote/task-1-report.md`) for that account.
 
-The same pattern holds for `playlist-small` (`37i9dQZF1DX4o1oenSJRJd`, "All
-Out 2000s"): `content.totalCount` is 150, exactly one content-bearing
-response arrived (`pagingInfo: { limit: 25, offset: 0 }`), and scrolling
-produced no further page. `playlist-small` turned out not to be small — 150
-is larger than `playlist-large`'s 50 — but the finding is the same for both:
-**interception captures only the first page of a playlist's tracks; the
-in-page scroll gesture this probe performs does not trigger the browser to
-fetch subsequent pages.**
+The corrected probe drives the actual scrollable element (found by walking
+the DOM for the largest element whose `scrollHeight` exceeds its
+`clientHeight`) and steps it by ~80% of its own height per iteration,
+stopping only once `scrollTop` stops advancing — rather than jumping straight
+to `scrollTop = scrollHeight`, which was tried and skips the middle of a
+virtualized list (it produced `offset=0` then `offset=125` directly, missing
+everything in between).
 
-**Note on the target list:** the plan's `playlist-large` target
-(`37i9dQZF1DXcBWIGoYBM5M`) was chosen to be a playlist "MUST be >100 tracks."
-At capture time (2026-08-27) it has 50. Spotify's flagship editorial
-playlists are resized over time, so this is drift in the fixture's suitability
-as a >100-track probe, not a capture error — the field the probe reads
-(`content.totalCount`) is exactly the field that would show a >100 count if
-one were live. It does not change the finding above: the pagination boundary
-that exists (50 tracks, page size 25) was crossed by the real playlist and
-was not followed by scrolling, which is the condition the spec's escalation
-trigger describes regardless of how large the real playlist is.
+With that fix, `playlist-large` yielded **four** content-bearing
+`playlistV2` responses, `pagingInfo` advancing across all of them, summing to
+exactly `totalCount` with no duplicates:
 
-This is the escalation condition named in the plan: **"if the large playlist
-yields only its first page of tracks and scrolling does not produce more,
-STOP."** That condition is met. See the Task 1 report
-(`.superpowers/sdd/2026-08-27-sleevenote/task-1-report.md`) for the full
-account; this document stops at recording what was observed, per the escalation
-instruction that this is the human operator's call, not the implementer's.
+| response | `pagingInfo.offset` | `pagingInfo.limit` | `content.items.length` |
+|---|---|---|---|
+| 1 | 0 | 25 | 25 |
+| 2 | 25 | 50 | 50 |
+| 3 | 75 | 50 | 50 |
+| 4 | 125 | 50 | 25 (only 25 remained) |
+
+The four windows' item counts sum to `25+50+50+25 = 150`, matching
+`content.totalCount` exactly, with 150 distinct track URIs across them — no
+gaps, no repeats. **A consumer of these fixtures must concatenate
+`content.items` across every response whose `data.playlistV2.__typename ===
+"Playlist"` and whose `uri` matches the requested playlist, in
+`pagingInfo.offset` order, not just read the first one.**
+
+`playlist-small` (`37i9dQZF1DXcBWIGoYBM5M`, "Today's Top Hits") shows the
+same complete-recovery pattern at a smaller scale: `content.totalCount` 50,
+two content-bearing responses (`offset: 0`/25 items, `offset: 25`/25 items),
+50 distinct track URIs, no gaps.
+
+**Conclusion: interception does return a playlist's full track list, not
+just its first page — but only when the scroll gesture actually drives the
+virtualized list container, incrementally rather than jumping to the end.**
+Approach A (browser interception) stands; Approach C is not needed. This
+supersedes the BLOCKED finding from the first capture attempt, which was
+correct given the probe it was testing but described a bug in the probe, not
+a limit of the architecture.
+
+**Note on the target list:** the two playlist fixture targets were swapped
+from the original plan (`playlist-small` is now `37i9dQZF1DXcBWIGoYBM5M`,
+`playlist-large` is now `37i9dQZF1DX4o1oenSJRJd`) because Spotify had resized
+them since the plan was written — the id the plan called "large" now holds
+only 50 tracks, and the one it called "small" holds 150. Names above reflect
+sizes measured at capture time (2026-08-27), not the ids' original labels.

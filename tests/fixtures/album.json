@@ -2981,14 +2981,32 @@
     }
   },
   {
-    "url": "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=499407&totpServer=499407&totpVer=61",
+    "url": "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=644755&totpServer=644755&totpVer=61",
     "status": 200,
     "body": {
       "clientId": "d8a5ed958d274c2e8ee717e6a4b0971d",
-      "accessToken": "BQDH-5JstEjtE_hP0h17Al0-0XUZTueuBET1bS8qPy6vOxsRyQw-6f1_nkb6bgdRnDoDHTQ2g3eMiNCTR-rRhgE_wA-M43Jk6GeGl5R8vUfOYGDKqK7YatQC7x5-FwVXPqRtauLGrBis",
-      "accessTokenExpirationTimestampMs": 1787861653036,
+      "accessToken": "BQB4q_v94bv2TfKdUrx3N3DcAuhFFf5hKvq_g4mAGWdJrN7mW0Y1ScsCl54KV2P6p5_AR_0UTGByF5yHGScLa1_rL1OmL7NPXPR6f0oly_yQqf6_oa5faiERPL2goFqsuLDyKAlUq9Dz",
+      "accessTokenExpirationTimestampMs": 1787862817490,
       "isAnonymous": true,
       "_notes": "Usage of this endpoint is not permitted under the Spotify Developer Terms and Developer Policy, and applicable law"
+    }
+  },
+  {
+    "url": "https://apresolve.spotify.com/?type=dealer-g2&type=spclient",
+    "status": 200,
+    "body": {
+      "dealer-g2": [
+        "gue1-dealer.g2.spotify.com:443",
+        "guc3-dealer.g2.spotify.com:443",
+        "gae2-dealer.g2.spotify.com:443",
+        "gew1-dealer.g2.spotify.com:443"
+      ],
+      "spclient": [
+        "gue1-spclient.spotify.com:443",
+        "guc3-spclient.spotify.com:443",
+        "gae2-spclient.spotify.com:443",
+        "gew1-spclient.spotify.com:443"
+      ]
     }
   },
   {
@@ -3010,35 +3028,12 @@
     }
   },
   {
-    "url": "https://apresolve.spotify.com/?type=dealer-g2&type=spclient",
-    "status": 200,
-    "body": {
-      "dealer-g2": [
-        "gue1-dealer.g2.spotify.com:443",
-        "guc3-dealer.g2.spotify.com:443",
-        "gew1-dealer.g2.spotify.com:443",
-        "gew4-dealer.g2.spotify.com:443"
-      ],
-      "spclient": [
-        "gue1-spclient.spotify.com:443",
-        "guc3-spclient.spotify.com:443",
-        "gew1-spclient.spotify.com:443",
-        "gew4-spclient.spotify.com:443"
-      ]
-    }
-  },
-  {
-    "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
-    "status": 200,
-    "body": {}
-  },
-  {
     "url": "https://clienttoken.spotify.com/v1/clienttoken",
     "status": 200,
     "body": {
       "response_type": "RESPONSE_GRANTED_TOKEN_RESPONSE",
       "granted_token": {
-        "token": "AAGoKTHHLj+f4iR/0J95Vw1pQqvsBPVMMaMomhWjaapjk/S4K70f1q8s9Vy+exdrKILPTWf6dXZq1M06Iu5EYe+DjKf9cym3YJE6xJno61t0IFgh2KBewfhhAa4WhPrWtbAH6HsCmjL6fFsydwA/H0lUq61cvhXsHgluw072BKOO+dKQt71sl/+pAg4AS9kpCCt2TCy9vPpzgzfFkjyqbHrP+GEcmrf9iWdqk+S0flCfrTFUVES7sO7d0/D5rZy4qTMwgV/EiccRrdozC5ZB9hhQQzmv3F8fIlN98J621arrGeCYC7MOU9U2Ada8gwaho7Ek0Ai4/BMr4tXnfvbFQDJzvFA/oW8Jyoal6hrAgPAxVfO7gD/3Hu0k+HtHg9RE4MWw0iaxJftYjhmtv00gPRy+MBvLKw==",
+        "token": "AAF+Cz2H/2kDAzJ9bN4hsk3C4gWxmlCTzFlHafgFz97B2r+ukYzwu8PB0n7B+UtDBz3IOGfyy8LXGEJSvUUU+43b7n5EnKwxKGp1rDSGyTUC3XK51k3IDlgPMaT0ny/fJB/JS7Q/6jgUefdQNbWQUCaVHm2QojT/LqGnXXuOBKoJDFv75xc86FzcZbk6RSV7C8dbI0Upe7NXG6lLs+WyhO84MRa1EeU9I6f4OD6llxT2YAen/m3v3xnEGKoN/C/hIvOTeYxMXXjSxFq+w+G2CeWO7LWGyEuazQLiiprnXmF5qAwoz3wwh7aVlTYSyXUkneakFd4opTeJPlqzF9QQgjhQTbi3P11p2HT1zut4mSjFLv1aqch3pBO/HaESlngHY3M75Lq5/byYb5IrG/BIQjd9MP2skw==",
         "expires_after_seconds": 1216800,
         "refresh_after_seconds": 1209600,
         "domains": [
@@ -3053,12 +3048,17 @@
     }
   },
   {
+    "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
+    "status": 200,
+    "body": {}
+  },
+  {
     "url": "https://gue1-spclient.spotify.com/remote-config-resolver/v3/unauth/configuration",
     "status": 200,
     "body": {
       "configuration": {
-        "configurationAssignmentId": "40af83f4-cadd-0160-54ac-865dd01552f9:0",
-        "fetchTimeMillis": "1787858840372",
+        "configurationAssignmentId": "93c197bc-7b1f-0aa6-2689-210e9152eab8:0",
+        "fetchTimeMillis": "1787859551324",
         "assignedValues": [
           {
             "propertyId": {
@@ -3103,9 +3103,26 @@
             }
           }
         ],
-        "policySnapshotId": "500083"
+        "policySnapshotId": "500094"
       }
     }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
+    "status": 200,
+    "body": {}
+  },
+  {
+    "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
+    "status": 200,
+    "body": {}
   },
   {
     "url": "https://apresolve.spotify.com/?type=dealer-g2&type=spclient",
@@ -3114,46 +3131,15 @@
       "dealer-g2": [
         "gue1-dealer.g2.spotify.com:443",
         "guc3-dealer.g2.spotify.com:443",
-        "gew1-dealer.g2.spotify.com:443",
-        "gew4-dealer.g2.spotify.com:443"
+        "gae2-dealer.g2.spotify.com:443",
+        "gew1-dealer.g2.spotify.com:443"
       ],
       "spclient": [
         "gue1-spclient.spotify.com:443",
         "guc3-spclient.spotify.com:443",
-        "gew1-spclient.spotify.com:443",
-        "gew4-spclient.spotify.com:443"
+        "gae2-spclient.spotify.com:443",
+        "gew1-spclient.spotify.com:443"
       ]
-    }
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
-  },
-  {
-    "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
-    "status": 200,
-    "body": {}
-  },
-  {
-    "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
-    "status": 200,
-    "body": {}
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
     }
   },
   {
@@ -3766,6 +3752,11 @@
     }
   },
   {
+    "url": "https://spclient.wg.spotify.com/library-import/v1/eligible",
+    "status": 200,
+    "body": {}
+  },
+  {
     "url": "https://geolocation.onetrust.com/cookieconsentpub/v1/geo/location",
     "status": 200,
     "body": {
@@ -3776,6 +3767,13 @@
     }
   },
   {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
     "url": "https://api-partner.spotify.com/pathfinder/v2/query",
     "status": 200,
     "body": {
@@ -3783,1274 +3781,6 @@
         "playlistV2": {
           "__typename": "NotFound",
           "message": "Object with uri 'spotify:playlist:37i9dQZF1EYkqdzj48dyYq' not found"
-        }
-      }
-    }
-  },
-  {
-    "url": "https://spclient.wg.spotify.com/library-import/v1/eligible",
-    "status": 200,
-    "body": {}
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
-  },
-  {
-    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
-    "status": 200,
-    "body": {
-      "data": {
-        "albumUnion": {
-          "__typename": "Album",
-          "copyright": {
-            "items": [
-              {
-                "text": "1989 4AD Ltd",
-                "type": "C"
-              },
-              {
-                "text": "1989 4AD Ltd",
-                "type": "P"
-              }
-            ],
-            "totalCount": 2
-          },
-          "courtesyLine": "",
-          "date": {
-            "isoString": "1989-04-17T00:00:00Z",
-            "precision": "DAY"
-          },
-          "isPreRelease": false,
-          "label": "4AD",
-          "name": "Doolittle",
-          "playability": {
-            "playable": true,
-            "reason": "PLAYABLE"
-          },
-          "preReleaseEndDateTime": null,
-          "saved": false,
-          "sharingInfo": {
-            "shareId": "ioE4NkmwSXSYx2rxecL0Cg",
-            "shareUrl": "https://open.spotify.com/album/6ymZBbRSmzAvoSGmwAFoxm?si=ioE4NkmwSXSYx2rxecL0Cg"
-          },
-          "tracksV2": {
-            "items": [
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 1
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 173173
-                  },
-                  "name": "Debaser",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "124970862",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:5cy5IStIn7OSHDEIgXeDyq"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 1,
-                  "uri": "spotify:track:3FzKPS0oVknVlCW3PhxIHl"
-                },
-                "uid": "edf6f9ef770ac82d64af"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 115693
-                  },
-                  "name": "Tame",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "25788797",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:5pT6ORhZsIq14smtQp3POM"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 2,
-                  "uri": "spotify:track:1H93izDjXIF30mAMC7UagB"
-                },
-                "uid": "d52185caf7a388ec3226"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 124773
-                  },
-                  "name": "Wave of Mutilation",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "68438357",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:51Z2IzJvLCnZaIpBV0IYRr"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 3,
-                  "uri": "spotify:track:1yJiE307EBIzOB9kqH1deb"
-                },
-                "uid": "5e9a65d2b730c5e254c2"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 154800
-                  },
-                  "name": "I Bleed",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "23674915",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:6YhMbOm0HwrGvnAyu4b6dL"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 4,
-                  "uri": "spotify:track:4azCKNOIuNsCB98BSRBR2B"
-                },
-                "uid": "e7da82ab4035e52dec2b"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 1
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 201693
-                  },
-                  "name": "Here Comes Your Man",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "327069558",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:4IvZLDtwBHmBmwgDIUbuwa"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 5,
-                  "uri": "spotify:track:0cs671lxX2eoDzr2KMuo3N"
-                },
-                "uid": "001874c90ae1c6c8ebf4"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 141373
-                  },
-                  "name": "Dead",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "12811136",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:1SHobTEExrHNnM2J149sRz"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 6,
-                  "uri": "spotify:track:5fAUch0HNiHxqLEc6a1t68"
-                },
-                "uid": "ba8c939072acaa0e4f62"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 1
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 177466
-                  },
-                  "name": "Monkey Gone to Heaven",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "126138006",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:6BT7qiDY4A5tOyklohjQuW"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 7,
-                  "uri": "spotify:track:1lFC3sMgOcDrVzNh8zXRnl"
-                },
-                "uid": "58e6b9082ee44c75e4e4"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 125800
-                  },
-                  "name": "Mr. Grieves",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "20800345",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:1TCSR2K7qofcXKzGEtNkyv"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 8,
-                  "uri": "spotify:track:0QboItjXFMSeHpAIgvVnz3"
-                },
-                "uid": "a0e4e7b53b9e6ba0ca37"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 84226
-                  },
-                  "name": "Crackity Jones",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "12117522",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:4OOnKruLT7SQf9ny770YKe"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 9,
-                  "uri": "spotify:track:1yuwn054ErrOWqjjk51ldD"
-                },
-                "uid": "a80e3116903c4705e60d"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 163640
-                  },
-                  "name": "La La Love You",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "31661724",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:6x0cOqPP07gTXusQfK9COQ"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 10,
-                  "uri": "spotify:track:3vY7cKuKNY1oAsyVVn7AQz"
-                },
-                "uid": "f78c76c6e2618fca06f4"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 231626
-                  },
-                  "name": "No 13 Baby",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "12586257",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:4NXzNzXDkMEWtvn3foSIrJ"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 11,
-                  "uri": "spotify:track:18PzY59cKHgu78CUYcUVAz"
-                },
-                "uid": "68853d42063c6b0fff8c"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 109533
-                  },
-                  "name": "There Goes My Gun",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "10144007",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:7GbTJsrNPXCoOWJ5vu2vSe"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 12,
-                  "uri": "spotify:track:0VAD8GUGL68sQcOdiHIjTU"
-                },
-                "uid": "5e60a7878c5bdd97c896"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 211440
-                  },
-                  "name": "Hey",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "233351325",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:0p5eZCY0R7uNCZS1YDtIYI"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 13,
-                  "uri": "spotify:track:2Aqc48sn8He26hmTvQ2BMj"
-                },
-                "uid": "493a296cdf3052ce206f"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 145266
-                  },
-                  "name": "Silver",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "8350579",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:2p74TLDP6dmfGpY9mel4hN"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 14,
-                  "uri": "spotify:track:2ofiwvmGa6QHUV8X46vEd6"
-                },
-                "uid": "e9c0a62e87224b4f9fe5"
-              },
-              {
-                "track": {
-                  "artists": {
-                    "items": [
-                      {
-                        "profile": {
-                          "name": "Pixies"
-                        },
-                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
-                      }
-                    ]
-                  },
-                  "associationsV3": {
-                    "videoAssociations": {
-                      "totalCount": 0
-                    }
-                  },
-                  "contentRating": {
-                    "label": "NONE"
-                  },
-                  "discNumber": 1,
-                  "duration": {
-                    "totalMilliseconds": 165066
-                  },
-                  "name": "Gouge Away",
-                  "playability": {
-                    "playable": true
-                  },
-                  "playcount": "76452603",
-                  "relinkingInformation": {
-                    "linkedTrack": {
-                      "__typename": "Track",
-                      "uri": "spotify:track:7oDDV1cal0M0RIjr4HuuJ9"
-                    }
-                  },
-                  "saved": false,
-                  "trackNumber": 15,
-                  "uri": "spotify:track:1YZDkJOFT8xlAXDi8lneb3"
-                },
-                "uid": "9f6306b9d86ba938cfb2"
-              }
-            ],
-            "totalCount": 15
-          },
-          "type": "ALBUM",
-          "uri": "spotify:album:6ymZBbRSmzAvoSGmwAFoxm",
-          "visualIdentity": {
-            "squareCoverImage": {
-              "__typename": "VisualIdentityImage",
-              "extractedColorSet": {
-                "encoreBaseSetTextColor": {
-                  "alpha": 255,
-                  "blue": 150,
-                  "green": 178,
-                  "red": 221
-                },
-                "highContrast": {
-                  "backgroundBase": {
-                    "alpha": 255,
-                    "blue": 0,
-                    "green": 24,
-                    "red": 56
-                  },
-                  "backgroundTintedBase": {
-                    "alpha": 255,
-                    "blue": 42,
-                    "green": 67,
-                    "red": 103
-                  },
-                  "textBase": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  },
-                  "textBrightAccent": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  },
-                  "textSubdued": {
-                    "alpha": 255,
-                    "blue": 169,
-                    "green": 197,
-                    "red": 240
-                  }
-                },
-                "higherContrast": {
-                  "backgroundBase": {
-                    "alpha": 255,
-                    "blue": 0,
-                    "green": 24,
-                    "red": 56
-                  },
-                  "backgroundTintedBase": {
-                    "alpha": 255,
-                    "blue": 42,
-                    "green": 67,
-                    "red": 103
-                  },
-                  "textBase": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  },
-                  "textBrightAccent": {
-                    "alpha": 255,
-                    "blue": 96,
-                    "green": 215,
-                    "red": 30
-                  },
-                  "textSubdued": {
-                    "alpha": 255,
-                    "blue": 169,
-                    "green": 197,
-                    "red": 240
-                  }
-                },
-                "minContrast": {
-                  "backgroundBase": {
-                    "alpha": 255,
-                    "blue": 0,
-                    "green": 24,
-                    "red": 56
-                  },
-                  "backgroundTintedBase": {
-                    "alpha": 255,
-                    "blue": 42,
-                    "green": 67,
-                    "red": 103
-                  },
-                  "textBase": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  },
-                  "textBrightAccent": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  },
-                  "textSubdued": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  }
-                }
-              }
-            }
-          },
-          "watchFeedEntrypoint": null,
-          "artists": {
-            "items": [
-              {
-                "id": "6zvul52xwTWzilBZl6BUbT",
-                "profile": {
-                  "name": "Pixies"
-                },
-                "sharingInfo": {
-                  "shareUrl": "https://open.spotify.com/artist/6zvul52xwTWzilBZl6BUbT?si=nOItYEOYTzSikgpEGl8h1w"
-                },
-                "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT",
-                "visuals": {
-                  "avatarImage": {
-                    "sources": [
-                      {
-                        "height": 640,
-                        "url": "https://i.scdn.co/image/ab6761610000e5eb419ffe5eb82b7460c76a986a",
-                        "width": 640
-                      },
-                      {
-                        "height": 160,
-                        "url": "https://i.scdn.co/image/ab6761610000f178419ffe5eb82b7460c76a986a",
-                        "width": 160
-                      },
-                      {
-                        "height": 320,
-                        "url": "https://i.scdn.co/image/ab67616100005174419ffe5eb82b7460c76a986a",
-                        "width": 320
-                      }
-                    ]
-                  }
-                }
-              }
-            ],
-            "totalCount": 1
-          },
-          "coverArt": {
-            "extractedColors": {
-              "colorDark": {
-                "hex": "#381800"
-              },
-              "colorLight": {
-                "hex": "#C65500"
-              },
-              "colorRaw": {
-                "hex": "#381800"
-              }
-            },
-            "sources": [
-              {
-                "height": 300,
-                "url": "https://i.scdn.co/image/ab67616d00001e02d27159df96ec159cc7d70080",
-                "width": 300
-              },
-              {
-                "height": 64,
-                "url": "https://i.scdn.co/image/ab67616d00004851d27159df96ec159cc7d70080",
-                "width": 64
-              },
-              {
-                "height": 640,
-                "url": "https://i.scdn.co/image/ab67616d0000b273d27159df96ec159cc7d70080",
-                "width": 640
-              }
-            ]
-          },
-          "discs": {
-            "items": [
-              {
-                "number": 1,
-                "tracks": {
-                  "totalCount": 15
-                }
-              }
-            ],
-            "totalCount": 1
-          },
-          "releases": {
-            "items": [],
-            "totalCount": 0
-          },
-          "moreAlbumsByArtist": {
-            "items": [
-              {
-                "discography": {
-                  "popularReleasesAlbums": {
-                    "items": [
-                      {
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67616d00001e022dfe8962aece41dc429e2870",
-                              "width": 300
-                            },
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab67616d000048512dfe8962aece41dc429e2870",
-                              "width": 64
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab67616d0000b2732dfe8962aece41dc429e2870",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "date": {
-                          "year": 1989
-                        },
-                        "id": "0DQyTVcDhK9wm0f6RaErWO",
-                        "name": "Doolittle",
-                        "playability": {
-                          "playable": true,
-                          "reason": "PLAYABLE"
-                        },
-                        "sharingInfo": {
-                          "shareId": "eX0hdXGsRciKjrNtx1j9dg",
-                          "shareUrl": "https://open.spotify.com/album/0DQyTVcDhK9wm0f6RaErWO?si=eX0hdXGsRciKjrNtx1j9dg"
-                        },
-                        "type": "ALBUM",
-                        "uri": "spotify:album:0DQyTVcDhK9wm0f6RaErWO"
-                      },
-                      {
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67616d00001e028aa545a0ea869940cce358b5",
-                              "width": 300
-                            },
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab67616d000048518aa545a0ea869940cce358b5",
-                              "width": 64
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab67616d0000b2738aa545a0ea869940cce358b5",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "date": {
-                          "year": 1988
-                        },
-                        "id": "50j4Wm1b9hLpSpPIA39Vp9",
-                        "name": "Surfer Rosa (2007 Remaster)",
-                        "playability": {
-                          "playable": true,
-                          "reason": "PLAYABLE"
-                        },
-                        "sharingInfo": {
-                          "shareId": "2-wgzgDvTmaUmCdI_v_Lng",
-                          "shareUrl": "https://open.spotify.com/album/50j4Wm1b9hLpSpPIA39Vp9?si=2-wgzgDvTmaUmCdI_v_Lng"
-                        },
-                        "type": "ALBUM",
-                        "uri": "spotify:album:50j4Wm1b9hLpSpPIA39Vp9"
-                      },
-                      {
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67616d00001e02e420e17950e1432fa2aea4d1",
-                              "width": 300
-                            },
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab67616d00004851e420e17950e1432fa2aea4d1",
-                              "width": 64
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab67616d0000b273e420e17950e1432fa2aea4d1",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "date": {
-                          "year": 2016
-                        },
-                        "id": "5F9YYEKDxenkRpyuovdqZe",
-                        "name": "Head Carrier",
-                        "playability": {
-                          "playable": true,
-                          "reason": "PLAYABLE"
-                        },
-                        "sharingInfo": {
-                          "shareId": "pKyEGtdpTj2DjyKJ4TLa7g",
-                          "shareUrl": "https://open.spotify.com/album/5F9YYEKDxenkRpyuovdqZe?si=pKyEGtdpTj2DjyKJ4TLa7g"
-                        },
-                        "type": "ALBUM",
-                        "uri": "spotify:album:5F9YYEKDxenkRpyuovdqZe"
-                      },
-                      {
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67616d00001e0267b1e90642787fe722e01af2",
-                              "width": 300
-                            },
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab67616d0000485167b1e90642787fe722e01af2",
-                              "width": 64
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab67616d0000b27367b1e90642787fe722e01af2",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "date": {
-                          "year": 1990
-                        },
-                        "id": "0BK1LxNNcaNUtAqTBQAOR8",
-                        "name": "Bossanova",
-                        "playability": {
-                          "playable": true,
-                          "reason": "PLAYABLE"
-                        },
-                        "sharingInfo": {
-                          "shareId": "JN0JtTWuT_O9-ZnU_ZU4Fw",
-                          "shareUrl": "https://open.spotify.com/album/0BK1LxNNcaNUtAqTBQAOR8?si=JN0JtTWuT_O9-ZnU_ZU4Fw"
-                        },
-                        "type": "ALBUM",
-                        "uri": "spotify:album:0BK1LxNNcaNUtAqTBQAOR8"
-                      },
-                      {
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67616d00001e028edefbae55c0eb1a29fdfd65",
-                              "width": 300
-                            },
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab67616d000048518edefbae55c0eb1a29fdfd65",
-                              "width": 64
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab67616d0000b2738edefbae55c0eb1a29fdfd65",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "date": {
-                          "year": 2024
-                        },
-                        "id": "75hBHuaFQCVisHjw2l892X",
-                        "name": "You're So Impatient",
-                        "playability": {
-                          "playable": true,
-                          "reason": "PLAYABLE"
-                        },
-                        "sharingInfo": {
-                          "shareId": "OvacFAQPQXKfSeqvZappeg",
-                          "shareUrl": "https://open.spotify.com/album/75hBHuaFQCVisHjw2l892X?si=OvacFAQPQXKfSeqvZappeg"
-                        },
-                        "type": "SINGLE",
-                        "uri": "spotify:album:75hBHuaFQCVisHjw2l892X"
-                      },
-                      {
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67616d00001e02865d3683ca35959a3ee95429",
-                              "width": 300
-                            },
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab67616d00004851865d3683ca35959a3ee95429",
-                              "width": 64
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab67616d0000b273865d3683ca35959a3ee95429",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "date": {
-                          "year": 1991
-                        },
-                        "id": "1xtaONLuwdb5STNnLGNVGi",
-                        "name": "Trompe le Monde",
-                        "playability": {
-                          "playable": true,
-                          "reason": "PLAYABLE"
-                        },
-                        "sharingInfo": {
-                          "shareId": "RREt1t7QQ3C4n_dY40dnzg",
-                          "shareUrl": "https://open.spotify.com/album/1xtaONLuwdb5STNnLGNVGi?si=RREt1t7QQ3C4n_dY40dnzg"
-                        },
-                        "type": "ALBUM",
-                        "uri": "spotify:album:1xtaONLuwdb5STNnLGNVGi"
-                      },
-                      {
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67616d00001e022e79d812246fe75cc085028f",
-                              "width": 300
-                            },
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab67616d000048512e79d812246fe75cc085028f",
-                              "width": 64
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab67616d0000b2732e79d812246fe75cc085028f",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "date": {
-                          "year": 1990
-                        },
-                        "id": "1EzLdeSngJNnzM94BHBtK2",
-                        "name": "Velouria",
-                        "playability": {
-                          "playable": true,
-                          "reason": "PLAYABLE"
-                        },
-                        "sharingInfo": {
-                          "shareId": "ZgqBD5szT-24GH3EtbNCEg",
-                          "shareUrl": "https://open.spotify.com/album/1EzLdeSngJNnzM94BHBtK2?si=ZgqBD5szT-24GH3EtbNCEg"
-                        },
-                        "type": "SINGLE",
-                        "uri": "spotify:album:1EzLdeSngJNnzM94BHBtK2"
-                      },
-                      {
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67616d00001e0244f65312a8f96f87c2b05e23",
-                              "width": 300
-                            },
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab67616d0000485144f65312a8f96f87c2b05e23",
-                              "width": 64
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab67616d0000b27344f65312a8f96f87c2b05e23",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "date": {
-                          "year": 1987
-                        },
-                        "id": "79CvxovoFgGNuAMvQp9wul",
-                        "name": "Come On Pilgrim",
-                        "playability": {
-                          "playable": true,
-                          "reason": "PLAYABLE"
-                        },
-                        "sharingInfo": {
-                          "shareId": "59OrHMd7SJ2skSk5-8JtnQ",
-                          "shareUrl": "https://open.spotify.com/album/79CvxovoFgGNuAMvQp9wul?si=59OrHMd7SJ2skSk5-8JtnQ"
-                        },
-                        "type": "ALBUM",
-                        "uri": "spotify:album:79CvxovoFgGNuAMvQp9wul"
-                      },
-                      {
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67616d00001e02ffa9d82a1fd7345c7509246a",
-                              "width": 300
-                            },
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab67616d00004851ffa9d82a1fd7345c7509246a",
-                              "width": 64
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab67616d0000b273ffa9d82a1fd7345c7509246a",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "date": {
-                          "year": 2014
-                        },
-                        "id": "65X4N0kyi2BEk2YR0ndoAz",
-                        "name": "Doolittle 25: B-Sides, Peel Sessions And Demos",
-                        "playability": {
-                          "playable": true,
-                          "reason": "PLAYABLE"
-                        },
-                        "sharingInfo": {
-                          "shareId": "GL8rrTWHTw6Rsxtrh0oZTQ",
-                          "shareUrl": "https://open.spotify.com/album/65X4N0kyi2BEk2YR0ndoAz?si=GL8rrTWHTw6Rsxtrh0oZTQ"
-                        },
-                        "type": "ALBUM",
-                        "uri": "spotify:album:65X4N0kyi2BEk2YR0ndoAz"
-                      },
-                      {
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67616d00001e021912980876039826d70c41e7",
-                              "width": 300
-                            },
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab67616d000048511912980876039826d70c41e7",
-                              "width": 64
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab67616d0000b2731912980876039826d70c41e7",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "date": {
-                          "year": 2022
-                        },
-                        "id": "4RwCyGTa7l12VJSsdLJWga",
-                        "name": "Human Crime",
-                        "playability": {
-                          "playable": true,
-                          "reason": "PLAYABLE"
-                        },
-                        "sharingInfo": {
-                          "shareId": "t60QGG2RSGOmxXcI2Sk3fQ",
-                          "shareUrl": "https://open.spotify.com/album/4RwCyGTa7l12VJSsdLJWga?si=t60QGG2RSGOmxXcI2Sk3fQ"
-                        },
-                        "type": "SINGLE",
-                        "uri": "spotify:album:4RwCyGTa7l12VJSsdLJWga"
-                      }
-                    ]
-                  }
-                }
-              }
-            ]
-          }
-        }
-      }
-    }
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
-  },
-  {
-    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
-    "status": 200,
-    "body": {
-      "data": {
-        "albumUnion": {
-          "merch": {
-            "items": [],
-            "totalCount": 0
-          },
-          "name": "Doolittle"
         }
       }
     }
@@ -11687,6 +10417,1269 @@
     }
   },
   {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
+    "status": 200,
+    "body": {
+      "data": {
+        "albumUnion": {
+          "__typename": "Album",
+          "copyright": {
+            "items": [
+              {
+                "text": "1989 4AD Ltd",
+                "type": "C"
+              },
+              {
+                "text": "1989 4AD Ltd",
+                "type": "P"
+              }
+            ],
+            "totalCount": 2
+          },
+          "courtesyLine": "",
+          "date": {
+            "isoString": "1989-04-17T00:00:00Z",
+            "precision": "DAY"
+          },
+          "isPreRelease": false,
+          "label": "4AD",
+          "name": "Doolittle",
+          "playability": {
+            "playable": true,
+            "reason": "PLAYABLE"
+          },
+          "preReleaseEndDateTime": null,
+          "saved": false,
+          "sharingInfo": {
+            "shareId": "_sjnZEmLQJSHV5JfXPNlLQ",
+            "shareUrl": "https://open.spotify.com/album/6ymZBbRSmzAvoSGmwAFoxm?si=_sjnZEmLQJSHV5JfXPNlLQ"
+          },
+          "tracksV2": {
+            "items": [
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 1
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 173173
+                  },
+                  "name": "Debaser",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "124970862",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:5cy5IStIn7OSHDEIgXeDyq"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 1,
+                  "uri": "spotify:track:3FzKPS0oVknVlCW3PhxIHl"
+                },
+                "uid": "edf6f9ef770ac82d64af"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 115693
+                  },
+                  "name": "Tame",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "25788797",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:5pT6ORhZsIq14smtQp3POM"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 2,
+                  "uri": "spotify:track:1H93izDjXIF30mAMC7UagB"
+                },
+                "uid": "d52185caf7a388ec3226"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 124773
+                  },
+                  "name": "Wave of Mutilation",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "68438357",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:51Z2IzJvLCnZaIpBV0IYRr"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 3,
+                  "uri": "spotify:track:1yJiE307EBIzOB9kqH1deb"
+                },
+                "uid": "5e9a65d2b730c5e254c2"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 154800
+                  },
+                  "name": "I Bleed",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "23674915",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:6YhMbOm0HwrGvnAyu4b6dL"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 4,
+                  "uri": "spotify:track:4azCKNOIuNsCB98BSRBR2B"
+                },
+                "uid": "e7da82ab4035e52dec2b"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 1
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 201693
+                  },
+                  "name": "Here Comes Your Man",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "327069558",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:4IvZLDtwBHmBmwgDIUbuwa"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 5,
+                  "uri": "spotify:track:0cs671lxX2eoDzr2KMuo3N"
+                },
+                "uid": "001874c90ae1c6c8ebf4"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 141373
+                  },
+                  "name": "Dead",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "12811136",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:1SHobTEExrHNnM2J149sRz"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 6,
+                  "uri": "spotify:track:5fAUch0HNiHxqLEc6a1t68"
+                },
+                "uid": "ba8c939072acaa0e4f62"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 1
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 177466
+                  },
+                  "name": "Monkey Gone to Heaven",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "126138006",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:6BT7qiDY4A5tOyklohjQuW"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 7,
+                  "uri": "spotify:track:1lFC3sMgOcDrVzNh8zXRnl"
+                },
+                "uid": "58e6b9082ee44c75e4e4"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 125800
+                  },
+                  "name": "Mr. Grieves",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "20800345",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:1TCSR2K7qofcXKzGEtNkyv"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 8,
+                  "uri": "spotify:track:0QboItjXFMSeHpAIgvVnz3"
+                },
+                "uid": "a0e4e7b53b9e6ba0ca37"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 84226
+                  },
+                  "name": "Crackity Jones",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "12117522",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:4OOnKruLT7SQf9ny770YKe"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 9,
+                  "uri": "spotify:track:1yuwn054ErrOWqjjk51ldD"
+                },
+                "uid": "a80e3116903c4705e60d"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 163640
+                  },
+                  "name": "La La Love You",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "31661724",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:6x0cOqPP07gTXusQfK9COQ"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 10,
+                  "uri": "spotify:track:3vY7cKuKNY1oAsyVVn7AQz"
+                },
+                "uid": "f78c76c6e2618fca06f4"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 231626
+                  },
+                  "name": "No 13 Baby",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "12586257",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:4NXzNzXDkMEWtvn3foSIrJ"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 11,
+                  "uri": "spotify:track:18PzY59cKHgu78CUYcUVAz"
+                },
+                "uid": "68853d42063c6b0fff8c"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 109533
+                  },
+                  "name": "There Goes My Gun",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "10144007",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:7GbTJsrNPXCoOWJ5vu2vSe"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 12,
+                  "uri": "spotify:track:0VAD8GUGL68sQcOdiHIjTU"
+                },
+                "uid": "5e60a7878c5bdd97c896"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 211440
+                  },
+                  "name": "Hey",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "233351325",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:0p5eZCY0R7uNCZS1YDtIYI"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 13,
+                  "uri": "spotify:track:2Aqc48sn8He26hmTvQ2BMj"
+                },
+                "uid": "493a296cdf3052ce206f"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 145266
+                  },
+                  "name": "Silver",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "8350579",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:2p74TLDP6dmfGpY9mel4hN"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 14,
+                  "uri": "spotify:track:2ofiwvmGa6QHUV8X46vEd6"
+                },
+                "uid": "e9c0a62e87224b4f9fe5"
+              },
+              {
+                "track": {
+                  "artists": {
+                    "items": [
+                      {
+                        "profile": {
+                          "name": "Pixies"
+                        },
+                        "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT"
+                      }
+                    ]
+                  },
+                  "associationsV3": {
+                    "videoAssociations": {
+                      "totalCount": 0
+                    }
+                  },
+                  "contentRating": {
+                    "label": "NONE"
+                  },
+                  "discNumber": 1,
+                  "duration": {
+                    "totalMilliseconds": 165066
+                  },
+                  "name": "Gouge Away",
+                  "playability": {
+                    "playable": true
+                  },
+                  "playcount": "76452603",
+                  "relinkingInformation": {
+                    "linkedTrack": {
+                      "__typename": "Track",
+                      "uri": "spotify:track:7oDDV1cal0M0RIjr4HuuJ9"
+                    }
+                  },
+                  "saved": false,
+                  "trackNumber": 15,
+                  "uri": "spotify:track:1YZDkJOFT8xlAXDi8lneb3"
+                },
+                "uid": "9f6306b9d86ba938cfb2"
+              }
+            ],
+            "totalCount": 15
+          },
+          "type": "ALBUM",
+          "uri": "spotify:album:6ymZBbRSmzAvoSGmwAFoxm",
+          "visualIdentity": {
+            "squareCoverImage": {
+              "__typename": "VisualIdentityImage",
+              "extractedColorSet": {
+                "encoreBaseSetTextColor": {
+                  "alpha": 255,
+                  "blue": 150,
+                  "green": 178,
+                  "red": 221
+                },
+                "highContrast": {
+                  "backgroundBase": {
+                    "alpha": 255,
+                    "blue": 0,
+                    "green": 24,
+                    "red": 56
+                  },
+                  "backgroundTintedBase": {
+                    "alpha": 255,
+                    "blue": 42,
+                    "green": 67,
+                    "red": 103
+                  },
+                  "textBase": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  },
+                  "textBrightAccent": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  },
+                  "textSubdued": {
+                    "alpha": 255,
+                    "blue": 169,
+                    "green": 197,
+                    "red": 240
+                  }
+                },
+                "higherContrast": {
+                  "backgroundBase": {
+                    "alpha": 255,
+                    "blue": 0,
+                    "green": 24,
+                    "red": 56
+                  },
+                  "backgroundTintedBase": {
+                    "alpha": 255,
+                    "blue": 42,
+                    "green": 67,
+                    "red": 103
+                  },
+                  "textBase": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  },
+                  "textBrightAccent": {
+                    "alpha": 255,
+                    "blue": 96,
+                    "green": 215,
+                    "red": 30
+                  },
+                  "textSubdued": {
+                    "alpha": 255,
+                    "blue": 169,
+                    "green": 197,
+                    "red": 240
+                  }
+                },
+                "minContrast": {
+                  "backgroundBase": {
+                    "alpha": 255,
+                    "blue": 0,
+                    "green": 24,
+                    "red": 56
+                  },
+                  "backgroundTintedBase": {
+                    "alpha": 255,
+                    "blue": 42,
+                    "green": 67,
+                    "red": 103
+                  },
+                  "textBase": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  },
+                  "textBrightAccent": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  },
+                  "textSubdued": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  }
+                }
+              }
+            }
+          },
+          "watchFeedEntrypoint": null,
+          "artists": {
+            "items": [
+              {
+                "id": "6zvul52xwTWzilBZl6BUbT",
+                "profile": {
+                  "name": "Pixies"
+                },
+                "sharingInfo": {
+                  "shareUrl": "https://open.spotify.com/artist/6zvul52xwTWzilBZl6BUbT?si=BwQL6SYtQQyyyq1nGmRVPg"
+                },
+                "uri": "spotify:artist:6zvul52xwTWzilBZl6BUbT",
+                "visuals": {
+                  "avatarImage": {
+                    "sources": [
+                      {
+                        "height": 640,
+                        "url": "https://i.scdn.co/image/ab6761610000e5eb419ffe5eb82b7460c76a986a",
+                        "width": 640
+                      },
+                      {
+                        "height": 160,
+                        "url": "https://i.scdn.co/image/ab6761610000f178419ffe5eb82b7460c76a986a",
+                        "width": 160
+                      },
+                      {
+                        "height": 320,
+                        "url": "https://i.scdn.co/image/ab67616100005174419ffe5eb82b7460c76a986a",
+                        "width": 320
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "totalCount": 1
+          },
+          "coverArt": {
+            "extractedColors": {
+              "colorDark": {
+                "hex": "#381800"
+              },
+              "colorLight": {
+                "hex": "#C65500"
+              },
+              "colorRaw": {
+                "hex": "#381800"
+              }
+            },
+            "sources": [
+              {
+                "height": 300,
+                "url": "https://i.scdn.co/image/ab67616d00001e02d27159df96ec159cc7d70080",
+                "width": 300
+              },
+              {
+                "height": 64,
+                "url": "https://i.scdn.co/image/ab67616d00004851d27159df96ec159cc7d70080",
+                "width": 64
+              },
+              {
+                "height": 640,
+                "url": "https://i.scdn.co/image/ab67616d0000b273d27159df96ec159cc7d70080",
+                "width": 640
+              }
+            ]
+          },
+          "discs": {
+            "items": [
+              {
+                "number": 1,
+                "tracks": {
+                  "totalCount": 15
+                }
+              }
+            ],
+            "totalCount": 1
+          },
+          "releases": {
+            "items": [],
+            "totalCount": 0
+          },
+          "moreAlbumsByArtist": {
+            "items": [
+              {
+                "discography": {
+                  "popularReleasesAlbums": {
+                    "items": [
+                      {
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67616d00001e022dfe8962aece41dc429e2870",
+                              "width": 300
+                            },
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab67616d000048512dfe8962aece41dc429e2870",
+                              "width": 64
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab67616d0000b2732dfe8962aece41dc429e2870",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "date": {
+                          "year": 1989
+                        },
+                        "id": "0DQyTVcDhK9wm0f6RaErWO",
+                        "name": "Doolittle",
+                        "playability": {
+                          "playable": true,
+                          "reason": "PLAYABLE"
+                        },
+                        "sharingInfo": {
+                          "shareId": "aLHQAEO3TV2tCV_7LEdS5A",
+                          "shareUrl": "https://open.spotify.com/album/0DQyTVcDhK9wm0f6RaErWO?si=aLHQAEO3TV2tCV_7LEdS5A"
+                        },
+                        "type": "ALBUM",
+                        "uri": "spotify:album:0DQyTVcDhK9wm0f6RaErWO"
+                      },
+                      {
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67616d00001e028aa545a0ea869940cce358b5",
+                              "width": 300
+                            },
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab67616d000048518aa545a0ea869940cce358b5",
+                              "width": 64
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab67616d0000b2738aa545a0ea869940cce358b5",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "date": {
+                          "year": 1988
+                        },
+                        "id": "50j4Wm1b9hLpSpPIA39Vp9",
+                        "name": "Surfer Rosa (2007 Remaster)",
+                        "playability": {
+                          "playable": true,
+                          "reason": "PLAYABLE"
+                        },
+                        "sharingInfo": {
+                          "shareId": "zK5swq0jQtu3nDdel85W3Q",
+                          "shareUrl": "https://open.spotify.com/album/50j4Wm1b9hLpSpPIA39Vp9?si=zK5swq0jQtu3nDdel85W3Q"
+                        },
+                        "type": "ALBUM",
+                        "uri": "spotify:album:50j4Wm1b9hLpSpPIA39Vp9"
+                      },
+                      {
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67616d00001e02e420e17950e1432fa2aea4d1",
+                              "width": 300
+                            },
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab67616d00004851e420e17950e1432fa2aea4d1",
+                              "width": 64
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab67616d0000b273e420e17950e1432fa2aea4d1",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "date": {
+                          "year": 2016
+                        },
+                        "id": "5F9YYEKDxenkRpyuovdqZe",
+                        "name": "Head Carrier",
+                        "playability": {
+                          "playable": true,
+                          "reason": "PLAYABLE"
+                        },
+                        "sharingInfo": {
+                          "shareId": "hRhy92RuTXe0wjDexPfmTg",
+                          "shareUrl": "https://open.spotify.com/album/5F9YYEKDxenkRpyuovdqZe?si=hRhy92RuTXe0wjDexPfmTg"
+                        },
+                        "type": "ALBUM",
+                        "uri": "spotify:album:5F9YYEKDxenkRpyuovdqZe"
+                      },
+                      {
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67616d00001e0267b1e90642787fe722e01af2",
+                              "width": 300
+                            },
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab67616d0000485167b1e90642787fe722e01af2",
+                              "width": 64
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab67616d0000b27367b1e90642787fe722e01af2",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "date": {
+                          "year": 1990
+                        },
+                        "id": "0BK1LxNNcaNUtAqTBQAOR8",
+                        "name": "Bossanova",
+                        "playability": {
+                          "playable": true,
+                          "reason": "PLAYABLE"
+                        },
+                        "sharingInfo": {
+                          "shareId": "7zvhhn--TZS3tDt1PH-YsQ",
+                          "shareUrl": "https://open.spotify.com/album/0BK1LxNNcaNUtAqTBQAOR8?si=7zvhhn--TZS3tDt1PH-YsQ"
+                        },
+                        "type": "ALBUM",
+                        "uri": "spotify:album:0BK1LxNNcaNUtAqTBQAOR8"
+                      },
+                      {
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67616d00001e028edefbae55c0eb1a29fdfd65",
+                              "width": 300
+                            },
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab67616d000048518edefbae55c0eb1a29fdfd65",
+                              "width": 64
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab67616d0000b2738edefbae55c0eb1a29fdfd65",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "date": {
+                          "year": 2024
+                        },
+                        "id": "75hBHuaFQCVisHjw2l892X",
+                        "name": "You're So Impatient",
+                        "playability": {
+                          "playable": true,
+                          "reason": "PLAYABLE"
+                        },
+                        "sharingInfo": {
+                          "shareId": "zxz3DDjkS0K1szEfc-b7JA",
+                          "shareUrl": "https://open.spotify.com/album/75hBHuaFQCVisHjw2l892X?si=zxz3DDjkS0K1szEfc-b7JA"
+                        },
+                        "type": "SINGLE",
+                        "uri": "spotify:album:75hBHuaFQCVisHjw2l892X"
+                      },
+                      {
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67616d00001e02865d3683ca35959a3ee95429",
+                              "width": 300
+                            },
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab67616d00004851865d3683ca35959a3ee95429",
+                              "width": 64
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab67616d0000b273865d3683ca35959a3ee95429",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "date": {
+                          "year": 1991
+                        },
+                        "id": "1xtaONLuwdb5STNnLGNVGi",
+                        "name": "Trompe le Monde",
+                        "playability": {
+                          "playable": true,
+                          "reason": "PLAYABLE"
+                        },
+                        "sharingInfo": {
+                          "shareId": "6l7euG_7S4ivLyxhaPDkPg",
+                          "shareUrl": "https://open.spotify.com/album/1xtaONLuwdb5STNnLGNVGi?si=6l7euG_7S4ivLyxhaPDkPg"
+                        },
+                        "type": "ALBUM",
+                        "uri": "spotify:album:1xtaONLuwdb5STNnLGNVGi"
+                      },
+                      {
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67616d00001e022e79d812246fe75cc085028f",
+                              "width": 300
+                            },
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab67616d000048512e79d812246fe75cc085028f",
+                              "width": 64
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab67616d0000b2732e79d812246fe75cc085028f",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "date": {
+                          "year": 1990
+                        },
+                        "id": "1EzLdeSngJNnzM94BHBtK2",
+                        "name": "Velouria",
+                        "playability": {
+                          "playable": true,
+                          "reason": "PLAYABLE"
+                        },
+                        "sharingInfo": {
+                          "shareId": "uNo3meAdSMCGubr4ycNSvA",
+                          "shareUrl": "https://open.spotify.com/album/1EzLdeSngJNnzM94BHBtK2?si=uNo3meAdSMCGubr4ycNSvA"
+                        },
+                        "type": "SINGLE",
+                        "uri": "spotify:album:1EzLdeSngJNnzM94BHBtK2"
+                      },
+                      {
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67616d00001e0244f65312a8f96f87c2b05e23",
+                              "width": 300
+                            },
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab67616d0000485144f65312a8f96f87c2b05e23",
+                              "width": 64
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab67616d0000b27344f65312a8f96f87c2b05e23",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "date": {
+                          "year": 1987
+                        },
+                        "id": "79CvxovoFgGNuAMvQp9wul",
+                        "name": "Come On Pilgrim",
+                        "playability": {
+                          "playable": true,
+                          "reason": "PLAYABLE"
+                        },
+                        "sharingInfo": {
+                          "shareId": "d6YyM-Y-RS2CTt0m8ev6Gg",
+                          "shareUrl": "https://open.spotify.com/album/79CvxovoFgGNuAMvQp9wul?si=d6YyM-Y-RS2CTt0m8ev6Gg"
+                        },
+                        "type": "ALBUM",
+                        "uri": "spotify:album:79CvxovoFgGNuAMvQp9wul"
+                      },
+                      {
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67616d00001e02ffa9d82a1fd7345c7509246a",
+                              "width": 300
+                            },
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab67616d00004851ffa9d82a1fd7345c7509246a",
+                              "width": 64
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab67616d0000b273ffa9d82a1fd7345c7509246a",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "date": {
+                          "year": 2014
+                        },
+                        "id": "65X4N0kyi2BEk2YR0ndoAz",
+                        "name": "Doolittle 25: B-Sides, Peel Sessions And Demos",
+                        "playability": {
+                          "playable": true,
+                          "reason": "PLAYABLE"
+                        },
+                        "sharingInfo": {
+                          "shareId": "asBhgvQ9Sr-X-g05-M7gIA",
+                          "shareUrl": "https://open.spotify.com/album/65X4N0kyi2BEk2YR0ndoAz?si=asBhgvQ9Sr-X-g05-M7gIA"
+                        },
+                        "type": "ALBUM",
+                        "uri": "spotify:album:65X4N0kyi2BEk2YR0ndoAz"
+                      },
+                      {
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67616d00001e021912980876039826d70c41e7",
+                              "width": 300
+                            },
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab67616d000048511912980876039826d70c41e7",
+                              "width": 64
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab67616d0000b2731912980876039826d70c41e7",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "date": {
+                          "year": 2022
+                        },
+                        "id": "4RwCyGTa7l12VJSsdLJWga",
+                        "name": "Human Crime",
+                        "playability": {
+                          "playable": true,
+                          "reason": "PLAYABLE"
+                        },
+                        "sharingInfo": {
+                          "shareId": "C6pHepxbS5GwljjhUE8iDg",
+                          "shareUrl": "https://open.spotify.com/album/4RwCyGTa7l12VJSsdLJWga?si=C6pHepxbS5GwljjhUE8iDg"
+                        },
+                        "type": "SINGLE",
+                        "uri": "spotify:album:4RwCyGTa7l12VJSsdLJWga"
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
+    "status": 200,
+    "body": {
+      "data": {
+        "albumUnion": {
+          "merch": {
+            "items": [],
+            "totalCount": 0
+          },
+          "name": "Doolittle"
+        }
+      }
+    }
+  },
+  {
     "url": "https://api-partner.spotify.com/pathfinder/v2/query",
     "status": 200,
     "body": {
@@ -11696,6 +11689,48 @@
           "message": "Object with uri 'spotify:playlist:37i9dQZF1EYkqdzj48dyYq' not found"
         }
       }
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
     }
   },
   {
@@ -11813,36 +11848,6 @@
         },
         {
           "index": 15,
-          "transient": false,
-          "reason": 7
-        }
-      ]
-    }
-  },
-  {
-    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
-    "status": 200,
-    "body": {
-      "data": {
-        "playlistV2": {
-          "__typename": "NotFound",
-          "message": "Object with uri 'spotify:playlist:37i9dQZF1EYkqdzj48dyYq' not found"
-        }
-      }
-    }
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/v3/events",
-    "status": 200,
-    "body": {
-      "errors": [
-        {
-          "index": 0,
-          "transient": false,
-          "reason": 7
-        },
-        {
-          "index": 1,
           "transient": false,
           "reason": 7
         }
