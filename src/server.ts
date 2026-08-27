@@ -4,7 +4,12 @@ import type { Pool } from './browser.js'
 import type { Config } from './config.js'
 import type { Track, Album, Playlist } from './types.js'
 import { cacheKey, withCache } from './cache.js'
-import { NotFoundError, ExtractionEmptyError, ExtractionIncompleteError } from './extract.js'
+import {
+  NotFoundError,
+  ExtractionEmptyError,
+  ExtractionIncompleteError,
+  ExtractionTimeoutError,
+} from './extract.js'
 import { cacheHits, scrapeDuration, scrapeFailures, extractionEmpty, registry } from './metrics.js'
 
 export type ExtractFn = (
@@ -35,17 +40,6 @@ type EntityKind = (typeof ENTITY_KINDS)[number]
 // was *just* confirmed absent.
 function negativeKey(kind: EntityKind, id: string): string {
   return `${cacheKey(kind, id)}:absent`
-}
-
-// extract.ts's overall-budget timeout (`withBudget`, guarding the same
-// `cfg.produceBudgetMs` the cache's single-flight lock derives its TTL from)
-// has no dedicated error class -- it rejects with a plain `Error` whose
-// message names `produceBudgetMs`. Matching on that message couples this
-// file to extract.ts's exact wording, but adding a class there is a change
-// to extract.ts's exported surface, which is out of this task's scope
-// (Files: create only metrics.ts, server.ts, index.ts).
-function isProduceBudgetTimeout(err: unknown): err is Error {
-  return err instanceof Error && /produceBudgetMs/.test(err.message)
 }
 
 /**
@@ -102,10 +96,14 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       cacheHits.inc({ type: kind, result: result.hit })
       return result.value
     } catch (err) {
-      // Distinguishing these three is the entire point -- see extract.ts's
+      // Distinguishing NotFoundError / ExtractionEmptyError /
+      // ExtractionIncompleteError is the entire point -- see extract.ts's
       // own doc comments and the team lead's context. Collapsing any pair
       // of these back into one status code is exactly the failure mode this
-      // service exists to fix.
+      // service exists to fix. ExtractionTimeoutError is a fourth, narrower
+      // distinction (a produceBudgetMs backstop rarely expected to fire --
+      // see extract.ts's withBudget), mapped to 504 rather than folded into
+      // the generic 502 below.
       if (err instanceof NotFoundError) {
         // Negative-cache the id so a repeat request for something that
         // genuinely doesn't exist doesn't re-run a full extraction on every
@@ -132,7 +130,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         reply.code(502)
         return { error: 'extraction_incomplete', id, message: err.message }
       }
-      if (isProduceBudgetTimeout(err)) {
+      if (err instanceof ExtractionTimeoutError) {
         scrapeFailures.inc({ reason: 'timeout' })
         reply.code(504)
         return { error: 'timeout', id, message: err.message }

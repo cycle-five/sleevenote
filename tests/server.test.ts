@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { buildServer } from '../src/server.js'
 import { MemoryStore } from '../src/cache.js'
 import { loadConfig } from '../src/config.js'
-import { NotFoundError, ExtractionEmptyError, ExtractionIncompleteError } from '../src/extract.js'
+import {
+  NotFoundError,
+  ExtractionEmptyError,
+  ExtractionIncompleteError,
+  ExtractionTimeoutError,
+} from '../src/extract.js'
 
 const cfg = loadConfig({})
 const fakePool = { acquire: async () => { throw new Error('unused') }, liveContexts: () => 1, close: async () => {} }
@@ -74,6 +79,21 @@ describe('GET /metrics', () => {
     const res = await app.inject({ method: 'GET', url: '/metrics' })
     expect(res.statusCode).toBe(200)
     expect(res.body).toContain('sleevenote_extraction_empty_total')
+  })
+})
+
+describe('ExtractionTimeoutError', () => {
+  // Fix round 1: this used to be untestable except by a fake clock or a
+  // multi-minute real browser run, because the 504 mapping matched a bare
+  // Error's message by regex. extract.ts now throws a dedicated class from
+  // its produceBudgetMs backstop, and buildServer's injected `extract`
+  // makes exercising the HTTP mapping this direct -- no timers involved.
+  it('maps to 504, not 502', async () => {
+    const app = server(async () => {
+      throw new ExtractionTimeoutError('extraction exceeded produceBudgetMs (150000ms)')
+    })
+    const res = await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    expect(res.statusCode).toBe(504)
   })
 })
 

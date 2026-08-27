@@ -43,6 +43,17 @@ export class ExtractionEmptyError extends Error {}
 // `playlistItemCount` for where "seen" comes from.
 export class ExtractionIncompleteError extends Error {}
 
+// Task 6 fix round 1: `withBudget` used to reject with a bare `Error` whose
+// message merely *named* produceBudgetMs, and Task 6's HTTP layer matched a
+// 504 by regex-testing that message. That coupled the HTTP layer to this
+// file's exact wording with no compiler check -- a message edit here would
+// silently downgrade every timeout to a generic 502, exactly the kind of
+// silent failure this whole project exists to eliminate. A fourth error
+// class, alongside the three above, makes the 504 mapping an `instanceof`
+// check instead, and makes the path trivially testable via the injected
+// `extract` function `buildServer` already takes -- no fake clock needed.
+export class ExtractionTimeoutError extends Error {}
+
 const SCROLL_MAX_ITERATIONS = 200
 const SCROLL_STEP_DELAY_MS = 350
 const SCROLL_SETTLE_MS = 3_000
@@ -236,7 +247,7 @@ async function runExtraction(
 function withBudget<T>(work: Promise<T>, budgetMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error(`extraction exceeded produceBudgetMs (${budgetMs}ms)`))
+      reject(new ExtractionTimeoutError(`extraction exceeded produceBudgetMs (${budgetMs}ms)`))
     }, budgetMs)
     work.then(
       (value) => {
