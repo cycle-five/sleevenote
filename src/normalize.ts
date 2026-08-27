@@ -304,16 +304,30 @@ function findPlaylistEntity(recorded: Recorded[], id: string): Record<string, un
 }
 
 /**
- * Every page-bearing response's raw `content.items` array, unsorted --
- * "page-bearing" meaning `content.pagingInfo` is present, independent of
- * whether `name`/`uri` are also set (the entity response is itself page
- * one; pages past the first carry no uri, so uri can't be used to find
- * them). Factored out so `playlistItemCount` can count the same raw items
- * `normalizePlaylist` sorts and converts, without re-deriving which
- * responses are pages.
+ * Every track-item across every page-bearing response for this playlist,
+ * deduplicated by ABSOLUTE list position (`offset + i` within a page's
+ * `items` array) and returned in index order -- not simply concatenated
+ * page by page. "Page-bearing" means `content.pagingInfo` is present,
+ * independent of whether `name`/`uri` are also set (the entity response is
+ * itself page one; pages past the first carry no uri, so uri can't be used
+ * to find them).
+ *
+ * Deduplication happens HERE, at the source, rather than being reconstructed
+ * from a count derived some other way: a page recorded twice, or two
+ * overlapping page windows -- the most plausible product of a misbehaving
+ * scroll, which is exactly the failure this whole area of the code exists
+ * to catch -- must not merely be miscounted, it must not produce a
+ * duplicate `Track` in the list `normalizePlaylist` actually returns either.
+ * Keying by absolute index makes a duplicate or overlapping fetch a
+ * harmless overwrite (a later write for an index already seen simply
+ * replaces it with -- in every real case -- identical data) instead of a
+ * second list entry. Both `normalizePlaylist` (which converts each entry to
+ * a `Track`) and `playlistItemCount` (which just measures how many distinct
+ * positions were covered) build from this single deduplicated source, so
+ * there is exactly one place a duplicate/overlap gets resolved, not two.
  */
-function playlistPages(recorded: Recorded[]): { offset: number; items: unknown[] }[] {
-  const pages: { offset: number; items: unknown[] }[] = []
+function playlistItemsByIndex(recorded: Recorded[]): unknown[] {
+  const byIndex = new Map<number, unknown>()
   for (const p of playlistCandidates(recorded)) {
     const content = asRecord(p['content'])
     if (!content) continue
@@ -321,9 +335,13 @@ function playlistPages(recorded: Recorded[]): { offset: number; items: unknown[]
     if (!pagingInfo) continue
     const offset = asNumber(pagingInfo['offset']) ?? 0
     const items = asArray(content['items']) ?? []
-    pages.push({ offset, items })
+    items.forEach((item, i) => {
+      byIndex.set(offset + i, item)
+    })
   }
-  return pages
+  return Array.from(byIndex.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([, item]) => item)
 }
 
 export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | null {
@@ -342,19 +360,13 @@ export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | 
   const firstImage = imageItems && imageItems.length > 0 ? imageItems[0] : null
   const image = bestImage(firstImage)
 
-  // Concatenate items in pagingInfo.offset order.
-  const pages = playlistPages(recorded)
-  pages.sort((a, b) => a.offset - b.offset)
-
   const tracks: Track[] = []
-  for (const page of pages) {
-    for (const raw of page.items) {
-      const rec = asRecord(raw)
-      const itemV2 = rec ? asRecord(rec['itemV2']) : null
-      const trackNode = itemV2 ? itemV2['data'] : null
-      const track = trackFromNode(trackNode, 'trackDuration')
-      if (track) tracks.push(track)
-    }
+  for (const raw of playlistItemsByIndex(recorded)) {
+    const rec = asRecord(raw)
+    const itemV2 = rec ? asRecord(rec['itemV2']) : null
+    const trackNode = itemV2 ? itemV2['data'] : null
+    const track = trackFromNode(trackNode, 'trackDuration')
+    if (track) tracks.push(track)
   }
 
   return {
@@ -385,46 +397,6 @@ export function playlistTotalCount(recorded: Recorded[], id: string): number | n
 }
 
 /**
- * The total length of the union of `[offset, offset + length)` ranges in
- * `intervals`, collapsing duplicate and overlapping ranges instead of
- * summing their lengths. Summing would let a page recorded twice, or two
- * overlapping page windows, inflate the count past what was actually
- * covered -- and a misbehaving scroll (the exact thing `playlistItemCount`
- * exists to catch) is the most plausible source of a duplicated or
- * overlapping fetch, so summing is weakest precisely where this check needs
- * to be strongest. Zero-length intervals are dropped; they cover nothing
- * and would otherwise need special-casing in the merge below.
- */
-function unionCoverage(intervals: { offset: number; length: number }[]): number {
-  const sorted = intervals
-    .filter((iv) => iv.length > 0)
-    .map((iv) => ({ start: iv.offset, end: iv.offset + iv.length }))
-    .sort((a, b) => a.start - b.start)
-
-  let total = 0
-  let runStart: number | null = null
-  let runEnd = 0
-  for (const iv of sorted) {
-    if (runStart === null) {
-      runStart = iv.start
-      runEnd = iv.end
-    } else if (iv.start > runEnd) {
-      // A genuine gap: close out the run so far and start a new one.
-      total += runEnd - runStart
-      runStart = iv.start
-      runEnd = iv.end
-    } else if (iv.end > runEnd) {
-      // Overlaps (or exactly abuts) the current run -- extend it.
-      runEnd = iv.end
-    }
-    // Else: iv is entirely contained in the current run (a duplicate or a
-    // strict subset) -- it adds no new coverage.
-  }
-  if (runStart !== null) total += runEnd - runStart
-  return total
-}
-
-/**
  * The number of *distinct* track-item positions actually covered across
  * every page-bearing response for this playlist -- BEFORE
  * `normalizePlaylist` drops malformed ones (no name, no artists; see
@@ -437,18 +409,16 @@ function unionCoverage(intervals: { offset: number; length: number }[]): number 
  * survived validation; compare THIS against `playlistTotalCount` to detect
  * the former without being fooled by the latter.
  *
- * Deliberately the size of the UNION of each page's `[offset, offset +
- * items.length)` range, not the sum of `items.length` across pages: summing
- * lets a duplicated or overlapping page inflate the count until it matches
- * the declared total even though real positions were never covered -- and
- * NOT a count of distinct track URIs either, since a playlist may
- * legitimately contain the same track twice, which URI-distinctness would
- * wrongly undercount as missing. Returns `null` only if the entity itself
- * can't be found (mirrors `playlistTotalCount`).
+ * This is simply the size of `playlistItemsByIndex`'s deduplicated-by-index
+ * result -- NOT a sum of `items.length` across pages (a duplicated or
+ * overlapping page would inflate that past what was actually covered) and
+ * NOT a count of distinct track URIs either (a playlist may legitimately
+ * contain the same track twice, which URI-distinctness would wrongly flag
+ * as missing). Returns `null` only if the entity itself can't be found
+ * (mirrors `playlistTotalCount`).
  */
 export function playlistItemCount(recorded: Recorded[], id: string): number | null {
   const entity = findPlaylistEntity(recorded, id)
   if (!entity) return null
-  const intervals = playlistPages(recorded).map((page) => ({ offset: page.offset, length: page.items.length }))
-  return unionCoverage(intervals)
+  return playlistItemsByIndex(recorded).length
 }

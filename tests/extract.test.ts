@@ -9,7 +9,7 @@ import {
   ExtractionEmptyError,
   ExtractionIncompleteError,
 } from '../src/extract.js'
-import { playlistItemCount, playlistTotalCount } from '../src/normalize.js'
+import { normalizePlaylist, playlistItemCount, playlistTotalCount } from '../src/normalize.js'
 import type { Recorded } from '../src/types.js'
 
 const PATHFINDER_URL = 'https://api-partner.spotify.com/pathfinder/v2/query'
@@ -93,17 +93,21 @@ function playlistPageResponse(
   return { url: PATHFINDER_URL, status: 200, body: { data: { playlistV2 } } }
 }
 
-// Fix round 4: playlistItemCount SUMMED items.length across page-bearing
-// responses. A duplicated or overlapping page inflates that sum until it
-// matches the declared total even though real positions were never
-// covered -- and a misbehaving scroll (the exact thing this check exists to
-// catch) is the most plausible source of a duplicate or overlapping fetch,
-// so the old arithmetic was weakest exactly where it needed to be
-// strongest. These are pure unit tests against playlistItemCount directly
-// (no browser involved) because the defect is arithmetic, not a scrolling
-// or navigation behavior -- the team lead's report itself was framed purely
-// in terms of synthetic offset/length numbers.
-describe('playlistItemCount: union of ranges, not sum', () => {
+// Fix round 4 (corrected): the first attempt at this fix computed `seen` as
+// the union of each page's [offset, offset+items.length) range, which fixed
+// the COUNT but left a worse bug in place -- normalizePlaylist itself
+// (via the old playlistPages, which every one of these tests would still
+// have been feeding from) still concatenated pages with no dedup, so a
+// duplicated or overlapping page didn't just get miscounted, it produced an
+// actual duplicate Track in the returned playlist. The real fix dedupes at
+// the source: playlistItemsByIndex keys every item by absolute list
+// position (offset + i) in a Map, so both normalizePlaylist's track list
+// and playlistItemCount's count are built from the same
+// already-deduplicated data -- there's exactly one place a duplicate or
+// overlapping fetch gets resolved, not two. These are pure unit tests (no
+// browser involved) because the defect is arithmetic/data-shape, not a
+// scrolling or navigation behavior.
+describe('playlist pagination: dedup by absolute index, not sum or naive concatenation', () => {
   it('collapses a duplicated page instead of summing it, so a genuinely missing page is still detected', () => {
     const id = 'dup-page'
     const recorded: Recorded[] = [
@@ -112,7 +116,8 @@ describe('playlistItemCount: union of ranges, not sum', () => {
       // fetch). Offset 2 -- the genuinely missing page -- is never recorded.
       playlistPageResponse(id, { offset: 0, limit: 2, itemCount: 2, totalCount: 4 }),
     ]
-    // Union of [0,2) and [0,2) is 2, not the sum 2+2=4.
+    // Indices {0,1} deduplicated is 2 distinct positions, not the naive
+    // sum 2+2=4.
     expect(playlistItemCount(recorded, id)).toBe(2)
     expect(playlistTotalCount(recorded, id)).toBe(4)
   })
@@ -123,35 +128,53 @@ describe('playlistItemCount: union of ranges, not sum', () => {
       playlistPageResponse(id, { offset: 0, limit: 3, itemCount: 3, totalCount: 6, entity: true }),
       playlistPageResponse(id, { offset: 2, limit: 3, itemCount: 3, totalCount: 6 }),
     ]
-    // [0,3) union [2,5) = [0,5), length 5 -- not the sum 3+3=6. Index 5 was
-    // genuinely never seen.
+    // Indices {0,1,2} union {2,3,4} = {0,1,2,3,4}, 5 distinct positions --
+    // not the sum 3+3=6. Index 5 was genuinely never seen.
     expect(playlistItemCount(recorded, id)).toBe(5)
     expect(playlistTotalCount(recorded, id)).toBe(6)
   })
 
-  it('succeeds when overlapping ranges still cover the full declared range, even though their sum overshoots it', () => {
+  it('succeeds when overlapping ranges still cover the full declared range, and produces no duplicate tracks', () => {
     const id = 'overlap-complete'
     const recorded: Recorded[] = [
       playlistPageResponse(id, { offset: 0, limit: 3, itemCount: 3, totalCount: 6, entity: true }),
       playlistPageResponse(id, { offset: 2, limit: 4, itemCount: 4, totalCount: 6 }),
     ]
-    // [0,3) union [2,6) = [0,6), length 6 -- matches declared, even though
-    // the sum (3+4=7) overshoots it. An aggressive-but-successful scroll
-    // must not be rejected for fetching more than it strictly needed to.
+    // Indices {0,1,2} union {2,3,4,5} = {0..5}, 6 distinct positions --
+    // matches declared, even though the naive sum (3+4=7) overshoots it. An
+    // aggressive-but-successful scroll must not be rejected for fetching
+    // more than it strictly needed to.
     expect(playlistItemCount(recorded, id)).toBe(6)
     expect(playlistTotalCount(recorded, id)).toBe(6)
+
+    // The assertion the union-only fix would have missed entirely: index 2
+    // was recorded by BOTH pages. A correct count alone doesn't prove the
+    // returned playlist itself is duplicate-free -- normalizePlaylist must
+    // actually deduplicate the track it builds from index 2, not just agree
+    // on a total.
+    const playlist = normalizePlaylist(recorded, id)
+    expect(playlist).not.toBeNull()
+    expect(playlist!.tracks.length).toBe(6)
+    expect(new Set(playlist!.tracks.map((t) => t.id)).size).toBe(6)
   })
 
-  it('gives the same result the sum would have on the real, non-overlapping fixtures', async () => {
+  it('gives the same result on the real, non-overlapping fixtures, with no duplicate track URIs', async () => {
     const large = JSON.parse(await readFile('tests/fixtures/playlist-large.json', 'utf8')) as Recorded[]
     const small = JSON.parse(await readFile('tests/fixtures/playlist-small.json', 'utf8')) as Recorded[]
+    const largeId = '37i9dQZF1DX4o1oenSJRJd'
+    const smallId = '37i9dQZF1DXcBWIGoYBM5M'
     // docs/captured-shapes.md records these fixtures' four/two pages as
     // non-overlapping (offsets 0/25, 25/50, 75/50, 125/25 for the large one;
-    // 0/25, 25/25 for the small one), so the union should equal the
-    // previously-verified sum -- confirming the real captures don't overlap
-    // and this fix doesn't regress them.
-    expect(playlistItemCount(large, '37i9dQZF1DX4o1oenSJRJd')).toBe(150)
-    expect(playlistItemCount(small, '37i9dQZF1DXcBWIGoYBM5M')).toBe(50)
+    // 0/25, 25/25 for the small one), so dedup-by-index should equal the
+    // previously-verified counts -- confirming the real captures don't
+    // overlap and this fix doesn't regress them.
+    expect(playlistItemCount(large, largeId)).toBe(150)
+    expect(playlistItemCount(small, smallId)).toBe(50)
+
+    const largePlaylist = normalizePlaylist(large, largeId)
+    const smallPlaylist = normalizePlaylist(small, smallId)
+    expect(new Set(largePlaylist!.tracks.map((t) => t.id)).size).toBe(largePlaylist!.tracks.length)
+    expect(new Set(smallPlaylist!.tracks.map((t) => t.id)).size).toBe(smallPlaylist!.tracks.length)
   })
 })
 
