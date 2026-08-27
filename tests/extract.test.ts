@@ -570,6 +570,156 @@ describe('extract', () => {
     }
   }, 20_000)
 
+  // Fix round 3 supplement: the playlist item -> Track conversion has no
+  // __typename filter at all (unlike normalizeTrack, which checks
+  // __typename === 'Track' before accepting), so a podcast episode or local
+  // file in a real playlist reaches trackFromNode and returns null via a
+  // DIFFERENT path than the malformed-name test above: it has a real name,
+  // but no `artists` field at all (episodes don't have artists the way
+  // tracks do), so `artistsFromItems` returns [] and trackFromNode's
+  // "artists.length === 0" check drops it. Every fixture in this repo is an
+  // editorial playlist (totalCount === items.length exactly), which is why
+  // this never showed up there -- user playlists routinely mix in episodes
+  // and local files. seen (raw item count) must still equal declared here,
+  // same as the malformed-name case, because seen counts every item
+  // regardless of why (or whether) it became a Track.
+  it('does not throw ExtractionIncompleteError for a playlist containing a non-track item (e.g. a podcast episode)', async () => {
+    const eCfg = loadConfig({ POOL_SIZE: '1' })
+    const ePool = await createPool(eCfg)
+    try {
+      const id = 'episodeItemPlaylistId'
+      const page = await routedPage(ePool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: `<html><body><script>fetch('https://api-partner.spotify.com/pathfinder/v2/query')</script></body></html>`,
+        }),
+      )
+      await page.route('https://api-partner.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              playlistV2: {
+                __typename: 'Playlist',
+                name: 'Episode Item Playlist',
+                uri: `spotify:playlist:${id}`,
+                ownerV2: { data: { name: 'Someone' } },
+                images: { items: [] },
+                content: {
+                  totalCount: 3,
+                  pagingInfo: { limit: 25, offset: 0 },
+                  items: [
+                    playlistItem('one', 'One'),
+                    {
+                      itemV2: {
+                        data: {
+                          __typename: 'Episode',
+                          name: 'Bonus Episode',
+                          uri: 'spotify:episode:ep1',
+                          // No `artists` field at all -- episodes don't have
+                          // one the way tracks do. Dropped via a different
+                          // check (artists.length === 0) than the
+                          // malformed-name case above (name absent).
+                          trackDuration: { totalMilliseconds: 1_800_000 },
+                        },
+                      },
+                    },
+                    playlistItem('three', 'Three'),
+                  ],
+                },
+              },
+            },
+          }),
+        }),
+      )
+
+      const result = await extract('playlist', id, ePool, eCfg)
+      expect(result.type).toBe('playlist')
+      if (result.type === 'playlist') {
+        expect(result.tracks.map((t) => t.name)).toEqual(['One', 'Three'])
+      }
+    } finally {
+      await ePool.close()
+    }
+  }, 20_000)
+
+  // Album counterpart -- normalizeAlbum's item -> Track conversion has the
+  // same missing __typename filter.
+  it('does not throw ExtractionIncompleteError for an album containing a non-track item', async () => {
+    const eaCfg = loadConfig({ POOL_SIZE: '1' })
+    const eaPool = await createPool(eaCfg)
+    try {
+      const id = 'episodeItemAlbumId'
+      const page = await routedPage(eaPool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: `<html><body><script>fetch('https://api-partner.spotify.com/pathfinder/v2/query')</script></body></html>`,
+        }),
+      )
+      await page.route('https://api-partner.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              albumUnion: {
+                __typename: 'Album',
+                name: 'Episode Item Album',
+                uri: `spotify:album:${id}`,
+                artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+                coverArt: { sources: [{ url: 'https://img.example/album.jpg', width: 640, height: 640 }] },
+                tracksV2: {
+                  totalCount: 3,
+                  items: [
+                    {
+                      track: {
+                        name: 'One',
+                        uri: 'spotify:track:one',
+                        artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+                        duration: { totalMilliseconds: 200_000 },
+                      },
+                    },
+                    {
+                      track: {
+                        __typename: 'Episode',
+                        name: 'Bonus Episode',
+                        uri: 'spotify:episode:ep1',
+                        // No `artists` field -- dropped the same way as the
+                        // playlist counterpart above.
+                        duration: { totalMilliseconds: 1_800_000 },
+                      },
+                    },
+                    {
+                      track: {
+                        name: 'Three',
+                        uri: 'spotify:track:three',
+                        artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+                        duration: { totalMilliseconds: 200_000 },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+        }),
+      )
+
+      const result = await extract('album', id, eaPool, eaCfg)
+      expect(result.type).toBe('album')
+      if (result.type === 'album') {
+        expect(result.tracks.map((t) => t.name)).toEqual(['One', 'Three'])
+      }
+    } finally {
+      await eaPool.close()
+    }
+  }, 20_000)
+
   // The regression test for the two historical scroll bugs (see
   // docs/captured-shapes.md, "Pagination"): page.mouse.wheel firing at the
   // cursor's default (0,0) instead of the list container, and jumping
