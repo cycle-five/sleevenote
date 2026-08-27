@@ -230,19 +230,38 @@ export function normalizeAlbum(recorded: Recorded[], id: string): Album | null {
 }
 
 /**
- * The album's declared track count (`tracksV2.totalCount`), independent of
- * how many tracks `normalizeAlbum` actually recovered. A caller compares
- * this against `tracks.length` to detect a partial recovery -- there is no
- * pagination for albums per `docs/captured-shapes.md`, so in practice a
- * mismatch here means the single response we got was itself incomplete or
- * malformed, not that further pages were missed. Returns `null` if the
- * entity itself can't be found, or if `totalCount` is absent/non-numeric.
+ * The album's declared track count (`tracksV2.totalCount`). A caller
+ * compares this against `albumItemCount` -- NOT against
+ * `normalizeAlbum(...).tracks.length` -- to detect a partial recovery.
+ * Returns `null` if the entity itself can't be found, or if `totalCount` is
+ * absent/non-numeric.
  */
 export function albumTotalCount(recorded: Recorded[], id: string): number | null {
   const albumUnion = findAlbumUnion(recorded, id)
   if (!albumUnion) return null
   const tracksV2 = asRecord(albumUnion['tracksV2'])
   return tracksV2 ? asNumber(tracksV2['totalCount']) : null
+}
+
+/**
+ * The number of raw track-item entries actually present in `tracksV2.items`
+ * for this album -- BEFORE `normalizeAlbum` drops malformed ones (no name,
+ * no artists; see `trackFromNode`). Deliberately not the same thing as
+ * `normalizeAlbum(...).tracks.length`: a track dropped for being malformed
+ * is Task 2's validation rule doing its job (a nameless/artist-less track is
+ * useless to a search-query consumer), not a sign that a page was missed.
+ * Completeness is about whether we saw everything Spotify declared, not
+ * about how much of what we saw survived validation -- compare THIS against
+ * `albumTotalCount` to detect the former without being fooled by the
+ * latter. Returns `null` only if the entity itself can't be found (mirrors
+ * `albumTotalCount`); returns `0` if the entity has no `items` array at all.
+ */
+export function albumItemCount(recorded: Recorded[], id: string): number | null {
+  const albumUnion = findAlbumUnion(recorded, id)
+  if (!albumUnion) return null
+  const tracksV2 = asRecord(albumUnion['tracksV2'])
+  const items = tracksV2 ? asArray(tracksV2['items']) : null
+  return items ? items.length : 0
 }
 
 // --- playlist --------------------------------------------------------------
@@ -276,6 +295,29 @@ function findPlaylistEntity(recorded: Recorded[], id: string): Record<string, un
   )
 }
 
+/**
+ * Every page-bearing response's raw `content.items` array, unsorted --
+ * "page-bearing" meaning `content.pagingInfo` is present, independent of
+ * whether `name`/`uri` are also set (the entity response is itself page
+ * one; pages past the first carry no uri, so uri can't be used to find
+ * them). Factored out so `playlistItemCount` can count the same raw items
+ * `normalizePlaylist` sorts and converts, without re-deriving which
+ * responses are pages.
+ */
+function playlistPages(recorded: Recorded[]): { offset: number; items: unknown[] }[] {
+  const pages: { offset: number; items: unknown[] }[] = []
+  for (const p of playlistCandidates(recorded)) {
+    const content = asRecord(p['content'])
+    if (!content) continue
+    const pagingInfo = asRecord(content['pagingInfo'])
+    if (!pagingInfo) continue
+    const offset = asNumber(pagingInfo['offset']) ?? 0
+    const items = asArray(content['items']) ?? []
+    pages.push({ offset, items })
+  }
+  return pages
+}
+
 export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | null {
   const entity = findPlaylistEntity(recorded, id)
   if (!entity) return null
@@ -292,20 +334,8 @@ export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | 
   const firstImage = imageItems && imageItems.length > 0 ? imageItems[0] : null
   const image = bestImage(firstImage)
 
-  // Page-bearing responses: every response with a `content.pagingInfo`,
-  // independent of whether name/uri are set. The entity response is itself
-  // page one; pages past the first carry no uri, so uri cannot be used to
-  // find them. Concatenate items in pagingInfo.offset order.
-  const pages: { offset: number; items: unknown[] }[] = []
-  for (const p of playlistCandidates(recorded)) {
-    const content = asRecord(p['content'])
-    if (!content) continue
-    const pagingInfo = asRecord(content['pagingInfo'])
-    if (!pagingInfo) continue
-    const offset = asNumber(pagingInfo['offset']) ?? 0
-    const items = asArray(content['items']) ?? []
-    pages.push({ offset, items })
-  }
+  // Concatenate items in pagingInfo.offset order.
+  const pages = playlistPages(recorded)
   pages.sort((a, b) => a.offset - b.offset)
 
   const tracks: Track[] = []
@@ -332,17 +362,36 @@ export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | 
 
 /**
  * The playlist's declared track count (`content.totalCount`, read off the
- * entity-bearing response), independent of how many tracks
- * `normalizePlaylist` actually recovered across all pages. A caller compares
- * this against `tracks.length` to detect a partial scroll recovery -- the
- * exact failure mode that silently truncated a playlist during Task 1,
- * because a truncated playlist still looks like a completely valid one.
- * Returns `null` if the entity itself can't be found, or if `totalCount` is
- * absent/non-numeric.
+ * entity-bearing response). A caller compares this against
+ * `playlistItemCount` -- NOT against `normalizePlaylist(...).tracks.length`
+ * -- to detect a partial scroll recovery: the exact failure mode that
+ * silently truncated a playlist during Task 1, because a truncated playlist
+ * still looks like a completely valid one. Returns `null` if the entity
+ * itself can't be found, or if `totalCount` is absent/non-numeric.
  */
 export function playlistTotalCount(recorded: Recorded[], id: string): number | null {
   const entity = findPlaylistEntity(recorded, id)
   if (!entity) return null
   const content = asRecord(entity['content'])
   return content ? asNumber(content['totalCount']) : null
+}
+
+/**
+ * The number of raw track-item entries actually present across every
+ * page-bearing response for this playlist -- BEFORE `normalizePlaylist`
+ * drops malformed ones (no name, no artists; see `trackFromNode`).
+ * Deliberately not the same thing as `normalizePlaylist(...).tracks.length`:
+ * a track dropped for being malformed is Task 2's validation rule doing its
+ * job (a nameless/artist-less track is useless to a search-query consumer),
+ * not a sign that a page went unfetched. Completeness is about pagination
+ * coverage -- did we see everything Spotify declared -- not about how much
+ * of what we saw survived validation; compare THIS against
+ * `playlistTotalCount` to detect the former without being fooled by the
+ * latter. Returns `null` only if the entity itself can't be found (mirrors
+ * `playlistTotalCount`).
+ */
+export function playlistItemCount(recorded: Recorded[], id: string): number | null {
+  const entity = findPlaylistEntity(recorded, id)
+  if (!entity) return null
+  return playlistPages(recorded).reduce((sum, page) => sum + page.items.length, 0)
 }

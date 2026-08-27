@@ -425,6 +425,151 @@ describe('extract', () => {
     }
   }, 20_000)
 
+  // Fix round 3: this is the regression test for a false-positive the team
+  // lead found by execution, not theory. A malformed item (no name) is
+  // correctly dropped by normalize.ts's own validation (Task 2's rule --
+  // useless to a search-query consumer) -- that is not a missed page, and
+  // must not trip ExtractionIncompleteError. declared === seen (3 raw items
+  // present, 3 declared) even though only 2 survive validation into the
+  // returned track list. Before this fix, comparing declared against
+  // tracks.length (2) instead of seen (3) would wrongly throw here -- and
+  // because ExtractionIncompleteError is never cached, that would fail
+  // every retry forever, which is worse than the truncation this check
+  // exists to catch.
+  it('does not throw ExtractionIncompleteError for a playlist that dropped a malformed item but missed nothing', async () => {
+    const mCfg = loadConfig({ POOL_SIZE: '1' })
+    const mPool = await createPool(mCfg)
+    try {
+      const id = 'malformedItemPlaylistId'
+      const page = await routedPage(mPool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: `<html><body><script>fetch('https://api-partner.spotify.com/pathfinder/v2/query')</script></body></html>`,
+        }),
+      )
+      await page.route('https://api-partner.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              playlistV2: {
+                __typename: 'Playlist',
+                name: 'Malformed Item Playlist',
+                uri: `spotify:playlist:${id}`,
+                ownerV2: { data: { name: 'Someone' } },
+                images: { items: [] },
+                content: {
+                  totalCount: 3,
+                  pagingInfo: { limit: 25, offset: 0 },
+                  items: [
+                    playlistItem('one', 'One'),
+                    {
+                      itemV2: {
+                        data: {
+                          __typename: 'Track',
+                          // Malformed: no name -- dropped by trackFromNode.
+                          name: '',
+                          uri: 'spotify:track:two',
+                          artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Some Artist' } }] },
+                          trackDuration: { totalMilliseconds: 200_000 },
+                        },
+                      },
+                    },
+                    playlistItem('three', 'Three'),
+                  ],
+                },
+              },
+            },
+          }),
+        }),
+      )
+
+      const result = await extract('playlist', id, mPool, mCfg)
+      expect(result.type).toBe('playlist')
+      if (result.type === 'playlist') {
+        expect(result.tracks.map((t) => t.name)).toEqual(['One', 'Three'])
+      }
+    } finally {
+      await mPool.close()
+    }
+  }, 20_000)
+
+  // Album counterpart of the test above -- same reasoning, same fix, same
+  // exposure: normalizeAlbum drops malformed items too.
+  it('does not throw ExtractionIncompleteError for an album that dropped a malformed item but missed nothing', async () => {
+    const maCfg = loadConfig({ POOL_SIZE: '1' })
+    const maPool = await createPool(maCfg)
+    try {
+      const id = 'malformedItemAlbumId'
+      const page = await routedPage(maPool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: `<html><body><script>fetch('https://api-partner.spotify.com/pathfinder/v2/query')</script></body></html>`,
+        }),
+      )
+      await page.route('https://api-partner.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              albumUnion: {
+                __typename: 'Album',
+                name: 'Malformed Item Album',
+                uri: `spotify:album:${id}`,
+                artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+                coverArt: { sources: [{ url: 'https://img.example/album.jpg', width: 640, height: 640 }] },
+                tracksV2: {
+                  totalCount: 3,
+                  items: [
+                    {
+                      track: {
+                        name: 'One',
+                        uri: 'spotify:track:one',
+                        artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+                        duration: { totalMilliseconds: 200_000 },
+                      },
+                    },
+                    {
+                      track: {
+                        // Malformed: no name -- dropped by trackFromNode.
+                        name: '',
+                        uri: 'spotify:track:two',
+                        artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+                        duration: { totalMilliseconds: 200_000 },
+                      },
+                    },
+                    {
+                      track: {
+                        name: 'Three',
+                        uri: 'spotify:track:three',
+                        artists: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Album Artist' } }] },
+                        duration: { totalMilliseconds: 200_000 },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+        }),
+      )
+
+      const result = await extract('album', id, maPool, maCfg)
+      expect(result.type).toBe('album')
+      if (result.type === 'album') {
+        expect(result.tracks.map((t) => t.name)).toEqual(['One', 'Three'])
+      }
+    } finally {
+      await maPool.close()
+    }
+  }, 20_000)
+
   // The regression test for the two historical scroll bugs (see
   // docs/captured-shapes.md, "Pagination"): page.mouse.wheel firing at the
   // cursor's default (0,0) instead of the list container, and jumping

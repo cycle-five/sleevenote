@@ -2,10 +2,12 @@ import type { Page, Response } from 'playwright'
 import type { Pool } from './browser.js'
 import type { Config } from './config.js'
 import {
+  albumItemCount,
   albumTotalCount,
   normalizeAlbum,
   normalizePlaylist,
   normalizeTrack,
+  playlistItemCount,
   playlistTotalCount,
 } from './normalize.js'
 import type { Album, Playlist, Recorded, Track } from './types.js'
@@ -29,6 +31,16 @@ export class ExtractionEmptyError extends Error {}
 // that one is distinct from NotFoundError: "recovered fewer tracks than
 // declared" and "recovered zero tracks" are different diagnoses even though
 // both are the same class of bug.
+//
+// Fix round 3: the check below compares the number of raw items *seen*
+// against Spotify's declared total, not the number of tracks that survived
+// normalize.ts's own validation (no name, no artists -> dropped). Those are
+// different failures: a dropped item is Task 2's validation rule doing its
+// job on one bad/region-locked track, not a missed page. Conflating them
+// made this error fire on a perfectly complete extraction that happened to
+// contain one malformed item -- and because this error is never cached,
+// that failed every retry, forever. See normalize.ts's `albumItemCount` /
+// `playlistItemCount` for where "seen" comes from.
 export class ExtractionIncompleteError extends Error {}
 
 const SCROLL_MAX_ITERATIONS = 200
@@ -161,24 +173,38 @@ async function runExtraction(
     // tracks came back, just not all of them (a scroll that stopped early,
     // a page that didn't fire). Spotify reports its own declared total
     // alongside the entity (`content.totalCount` for a playlist,
-    // `tracksV2.totalCount` for an album; see normalize.ts), so compare
-    // against it rather than trusting "non-empty" to mean "complete". A
-    // partial playlist is exactly what silently truncated during Task 1 --
-    // it looks like a perfectly valid, cacheable result to anyone who
-    // doesn't check.
+    // `tracksV2.totalCount` for an album; see normalize.ts). A partial
+    // playlist is exactly what silently truncated during Task 1 -- it looks
+    // like a perfectly valid, cacheable result to anyone who doesn't check.
+    //
+    // Compare the declared total against `seen` (raw items present across
+    // recorded responses, via albumItemCount/playlistItemCount) -- NOT
+    // against `result.tracks.length`. Fix round 3: comparing against
+    // tracks.length made this fire on a fully complete extraction that
+    // simply contained one malformed item (no name, no artists), which
+    // normalize.ts correctly drops per Task 2's rule. That's validation
+    // doing its job, not a missed page, and since this error is never
+    // cached, treating it as incomplete failed every retry forever -- worse
+    // than the truncation this check exists to catch. `seen` counts every
+    // item regardless of whether it survived validation, so a dropped item
+    // no longer trips this check; a genuinely unfetched page still does.
     if (result.type === 'album') {
       const declared = albumTotalCount(recorded, id)
-      if (declared !== null && result.tracks.length !== declared) {
+      const seen = albumItemCount(recorded, id)
+      if (declared !== null && seen !== null && seen !== declared) {
         throw new ExtractionIncompleteError(
-          `album ${id} recovered ${result.tracks.length} of ${declared} declared tracks -- extraction was incomplete`,
+          `album ${id} saw ${seen} of ${declared} declared tracks across recorded responses ` +
+          `(${result.tracks.length} well-formed) -- extraction was incomplete`,
         )
       }
     }
     if (result.type === 'playlist') {
       const declared = playlistTotalCount(recorded, id)
-      if (declared !== null && result.tracks.length !== declared) {
+      const seen = playlistItemCount(recorded, id)
+      if (declared !== null && seen !== null && seen !== declared) {
         throw new ExtractionIncompleteError(
-          `playlist ${id} recovered ${result.tracks.length} of ${declared} declared tracks -- extraction was incomplete`,
+          `playlist ${id} saw ${seen} of ${declared} declared tracks across recorded responses ` +
+          `(${result.tracks.length} well-formed) -- extraction was incomplete`,
         )
       }
     }
