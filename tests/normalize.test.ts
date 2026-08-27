@@ -72,3 +72,115 @@ describe('normalizePlaylist', () => {
     expect(pl!.tracks.length).toBeGreaterThan(100)
   })
 })
+
+// `Recorded[]` reaches the normalizer via `JSON.parse(...) as Recorded[]`
+// with no runtime validation, so a capture tool that pushed `null` for a
+// response it failed to parse -- or a track item Spotify served with a gap
+// in it -- is a realistic input, not an adversarial one. These pin the
+// "never throw, missing fields become null" rules with edge cases that
+// don't occur in the real fixtures, so nothing else in the suite covers
+// them.
+describe('robustness against malformed recordings', () => {
+  it('does not throw on a null or undefined array entry', () => {
+    expect(() => normalizeTrack([null as unknown as Recorded], 'x')).not.toThrow()
+    expect(() => normalizeTrack([undefined as unknown as Recorded], 'x')).not.toThrow()
+    expect(normalizeTrack([null as unknown as Recorded], 'x')).toBeNull()
+    expect(normalizeTrack([undefined as unknown as Recorded], 'x')).toBeNull()
+
+    expect(() => normalizeAlbum([null as unknown as Recorded], 'x')).not.toThrow()
+    expect(normalizeAlbum([null as unknown as Recorded], 'x')).toBeNull()
+
+    expect(() => normalizePlaylist([null as unknown as Recorded], 'x')).not.toThrow()
+    expect(normalizePlaylist([null as unknown as Recorded], 'x')).toBeNull()
+  })
+
+  it('drops malformed items from a playlist track list but keeps the well-formed ones', () => {
+    const recorded: Recorded[] = [
+      {
+        url: 'https://api-partner.spotify.com/pathfinder/v2/query',
+        status: 200,
+        body: {
+          data: {
+            playlistV2: {
+              __typename: 'Playlist',
+              name: 'Malformed Items',
+              uri: 'spotify:playlist:playlistid',
+              ownerV2: { data: { name: 'Someone' } },
+              images: { items: [] },
+              content: {
+                totalCount: 4,
+                pagingInfo: { limit: 25, offset: 0 },
+                items: [
+                  null,
+                  {
+                    itemV2: {
+                      data: {
+                        __typename: 'Track',
+                        name: '',
+                        uri: 'spotify:track:noname',
+                        artists: { items: [{ profile: { name: 'X' }, uri: 'spotify:artist:x' }] },
+                        trackDuration: { totalMilliseconds: 1000 },
+                      },
+                    },
+                  },
+                  {
+                    itemV2: {
+                      data: {
+                        __typename: 'Track',
+                        name: 'No Artists',
+                        uri: 'spotify:track:noartists',
+                        artists: { items: [] },
+                        trackDuration: { totalMilliseconds: 1000 },
+                      },
+                    },
+                  },
+                  {
+                    itemV2: {
+                      data: {
+                        __typename: 'Track',
+                        name: 'Well Formed',
+                        uri: 'spotify:track:wellformed',
+                        artists: { items: [{ profile: { name: 'Y' }, uri: 'spotify:artist:y' }] },
+                        trackDuration: { totalMilliseconds: 2000 },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ]
+
+    const pl = normalizePlaylist(recorded, 'playlistid')
+    expect(pl).not.toBeNull()
+    expect(pl!.tracks.map((t) => t.name)).toEqual(['Well Formed'])
+  })
+
+  it('yields durationMs: null and album: null (not undefined) when those fields are absent', () => {
+    const recorded: Recorded[] = [
+      {
+        url: 'https://api-partner.spotify.com/pathfinder/v2/query',
+        status: 200,
+        body: {
+          data: {
+            trackUnion: {
+              __typename: 'Track',
+              name: 'No Duration Or Album',
+              uri: 'spotify:track:sparse',
+              firstArtist: { items: [{ profile: { name: 'Z' }, uri: 'spotify:artist:z' }] },
+              otherArtists: { items: [] },
+              // deliberately no `duration`, no `albumOfTrack`
+            },
+          },
+        },
+      },
+    ]
+
+    const track = normalizeTrack(recorded, 'sparse')
+    expect(track).not.toBeNull()
+    expect(track!.durationMs).toBe(null)
+    expect(track!.album).toBe(null)
+  })
+})

@@ -85,6 +85,8 @@ response that also uses this key) has a `tracksV2` field.
 | `type` | — | constant `"album"` |
 | `name` | `data.albumUnion.name` | |
 | `url` | — | constructed: `https://open.spotify.com/album/<id>` |
+| `artists[].name` | `data.albumUnion.artists.items[].profile.name` | the album's own artist(s), not a per-track list; same item shape as every other artist list in this corpus |
+| `artists[].id` | `data.albumUnion.artists.items[].uri` | parse from `.uri` (`.id` is also present directly at this level, but parse from `.uri` for consistency with the rest of the corpus) |
 | `image` | `data.albumUnion.coverArt.sources[].url` | same multi-size array shape as track; same sizing rule (largest `width`, else last entry) |
 | `tracks[]` | `data.albumUnion.tracksV2.items[].track` | `tracksV2.items` is the full track list; see below |
 | `tracks[].totalCount` (for verifying completeness) | `data.albumUnion.tracksV2.totalCount` | in the captured fixture (`6ymZBbRSmzAvoSGmwAFoxm`, 15 tracks) `totalCount === items.length`; the whole album came back in one response, no pagination observed for albums |

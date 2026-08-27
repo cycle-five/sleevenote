@@ -26,9 +26,14 @@ function asNumber(value: unknown): number | null {
 /** Every recorded pathfinder response's `data` object, in recording order. */
 function pathfinderData(recorded: Recorded[]): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = []
-  for (const entry of recorded) {
-    if (entry.url !== PATHFINDER_URL) continue
-    const body = asRecord(entry.body)
+  for (const raw of recorded) {
+    // `recorded` reaches us via `JSON.parse(...) as Recorded[]` with no
+    // runtime validation, so a malformed entry (null, a non-object) is a
+    // realistic input, not just an adversarial one -- never throw on it.
+    const entry = asRecord(raw)
+    if (!entry) continue
+    if (asString(entry['url']) !== PATHFINDER_URL) continue
+    const body = asRecord(entry['body'])
     const data = body ? asRecord(body['data']) : null
     if (data) out.push(data)
   }
