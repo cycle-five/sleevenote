@@ -166,3 +166,34 @@ describe('withCache', () => {
     expect((holderResult.staleError as Error).message).toBe('holder failed')
   })
 })
+
+describe('produceAndCache: a write failure is not treated as a produce() failure (fix wave, finding 2)', () => {
+  // produceAndCache's try used to wrap both `produce()` and the following
+  // `store.set()` write. A store.set() failure therefore took the exact
+  // same stale-on-error fallback path built for a genuine scrape failure --
+  // when a prior entry existed, it silently served that stale value instead
+  // of surfacing that the write itself failed (the scrape succeeded; only
+  // persisting it didn't). Splitting the try means a write failure now
+  // propagates as itself, un-mediated by fallback logic that exists for a
+  // different kind of failure. Mutation-checked: wrapping store.set() back
+  // inside produce()'s try makes this resolve the stale value instead of
+  // rejecting.
+  it('rejects with the store.set error instead of silently serving a stale value that happens to exist', async () => {
+    const store = new MemoryStore()
+    // Seed an entry so a wrongly-caught write failure would have something
+    // to (wrongly) fall back to.
+    await withCache({ store, key: 'k', ttlSeconds: 60, now: 1000, produce: async () => ({ n: 1 }) })
+
+    const writeErr = new Error('store.set failed: ECONNREFUSED redis')
+    store.set = async () => {
+      throw writeErr
+    }
+
+    // now is far enough past ttlSeconds that the seeded entry is no longer
+    // fresh, so withCache must go through produceAndCache rather than
+    // short-circuiting on the early freshness check.
+    await expect(
+      withCache({ store, key: 'k', ttlSeconds: 60, now: 2000, produce: async () => ({ n: 2 }) }),
+    ).rejects.toBe(writeErr)
+  })
+})

@@ -80,11 +80,20 @@ async function produceAndCache<T>(
   now: number,
   produce: () => Promise<T>,
 ): Promise<CacheResult<T>> {
+  // Fix wave: only `produce()` is inside this try. It used to also wrap the
+  // `store.set()` write below, so a cache-*write* failure (Redis down at the
+  // moment we try to persist a value we successfully scraped) took the exact
+  // same fallback path as a scrape failure -- eligible to be silently masked
+  // behind a stale value, and, when there was nothing to fall back on,
+  // rethrown as if `produce()` itself had failed. Neither is right: the
+  // scrape succeeded, only the write to Redis didn't, and that's a distinct
+  // failure a caller (server.ts's `recordFailureMetrics`) needs to be able
+  // to tell apart from "extraction stopped matching Spotify's page". A write
+  // failure now propagates directly, unmediated by the stale-on-error logic
+  // that exists specifically for `produce()`.
+  let value: T
   try {
-    const value = await produce()
-    const entry: Entry<T> = { value, storedAt: now }
-    await store.set(key, JSON.stringify(entry), ttlSeconds * STALE_GRACE_MULTIPLIER)
-    return { value, hit: 'miss' }
+    value = await produce()
   } catch (err) {
     const found = await readEntry<T>(store, key)
     if (found) {
@@ -96,6 +105,9 @@ async function produceAndCache<T>(
     }
     throw err
   }
+  const entry: Entry<T> = { value, storedAt: now }
+  await store.set(key, JSON.stringify(entry), ttlSeconds * STALE_GRACE_MULTIPLIER)
+  return { value, hit: 'miss' }
 }
 
 /**

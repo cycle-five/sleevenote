@@ -9,6 +9,7 @@ import {
   ExtractionTimeoutError,
 } from '../src/extract.js'
 import { extractionEmpty, scrapeFailures } from '../src/metrics.js'
+import { StoreError } from '../src/store.js'
 
 type CounterLike = {
   get: () => Promise<{ values: { value: number; labels: Partial<Record<string, string | number>> }[] }>
@@ -280,5 +281,113 @@ describe('produceBudgetMs threading', () => {
     // If the server had silently defaulted instead of threading cfg through,
     // this would have been 150 (DEFAULT_PRODUCE_BUDGET_MS / 1000) here.
     expect(lockTtls[0]).not.toBe(150)
+  })
+})
+
+describe('store failure on the negative-cache read (fix wave, finding 1)', () => {
+  // Before this fix, `store.get(negativeKey(...))` ran BEFORE handleEntity's
+  // try opened, so a throwing store escaped all of this file's error
+  // mapping entirely and fell through to Fastify's own default handler: a
+  // bare 500 with the raw store error as the body, and none of
+  // scrapeFailures ever seeing it -- for what is, in production, the
+  // likeliest failure there is (Redis unreachable). Mutation-checked: revert
+  // either half of the fix (the read staying outside the try, or the
+  // missing 'store' branch on recordFailureMetrics) and this fails.
+  it('maps to 502 (not a bare 500) and is counted as reason: store, not unknown', async () => {
+    const store = new MemoryStore()
+    store.get = async () => {
+      throw new StoreError('RedisStore.get failed: ECONNREFUSED redis')
+    }
+    const app = server(async () => TRACK, store)
+
+    const before = {
+      store: await counterValue(scrapeFailures, { reason: 'store' }),
+      total: await counterTotal(scrapeFailures),
+    }
+    const res = await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    const after = {
+      store: await counterValue(scrapeFailures, { reason: 'store' }),
+      total: await counterTotal(scrapeFailures),
+    }
+
+    expect(res.statusCode).toBe(502)
+    expect(after.store).toBe(before.store + 1)
+    expect(after.total).toBe(before.total + 1)
+  })
+})
+
+describe('cache-write failure is not masked as a scrape failure (fix wave, finding 2)', () => {
+  // The twin of finding 1, on the write side: produceAndCache's try used to
+  // wrap produce() AND the following store.set(). When a stale entry
+  // existed to fall back on, a store.set() failure (Redis down at the
+  // moment of an otherwise-successful scrape) took the SAME graceful
+  // stale-on-error path built for a genuine extraction failure -- masked
+  // into a plain 200 stale response, with the write failure only ever
+  // visible in a metric, not in what the caller got back. Mutation-checked:
+  // revert cache.ts's try-split (restore produceAndCache's original combined
+  // try) and this resolves 200 with a masked stale value instead of
+  // surfacing the write failure.
+  it('a store.set failure with a prior entry to fall back on still surfaces as an error, not a masked stale 200', async () => {
+    const store = new MemoryStore()
+    const app = server(async () => TRACK, store)
+
+    // Prime a cache entry, then age it past freshness so the next request
+    // re-produces rather than serving the fresh hit untouched.
+    await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    const raw = JSON.parse((await store.get('v1:track:abc'))!)
+    raw.storedAt = 0
+    await store.set('v1:track:abc', JSON.stringify(raw), 9999)
+
+    store.set = async () => {
+      throw new StoreError('RedisStore.set failed: ECONNREFUSED redis')
+    }
+
+    const res = await app.inject({ method: 'GET', url: '/v1/track/abc' })
+
+    expect(res.statusCode).toBe(502)
+  })
+})
+
+describe('entity id validation (fix wave, finding 3)', () => {
+  // Verified against the real behaviour this replaces: GET
+  // /v1/track/abc%3Alock used to write Redis key `v1:track:abc:lock` --
+  // byte-identical to track `abc`'s own single-flight lock key, at a 60-day
+  // physical TTL (STALE_GRACE_MULTIPLIER x a 30-day track TTL). Rejecting
+  // before the store is ever touched is the point, not just the status code.
+  it('rejects an id containing a colon with 400, before touching the store', async () => {
+    const store = new MemoryStore()
+    let getCalls = 0
+    const originalGet = store.get.bind(store)
+    store.get = async (key: string) => {
+      getCalls++
+      return originalGet(key)
+    }
+    const app = server(async () => TRACK, store)
+
+    const res = await app.inject({ method: 'GET', url: '/v1/track/abc%3Alock' })
+
+    expect(res.statusCode).toBe(400)
+    expect(getCalls).toBe(0)
+  })
+
+  // The `../` shape reported against the live service: dots are simply not
+  // in ENTITY_ID_PATTERN, so this never reaches page.goto regardless of how
+  // many path segments it would have spanned.
+  it('rejects an id containing dots (the `../` traversal shape)', async () => {
+    const app = server(async () => TRACK)
+    const res = await app.inject({ method: 'GET', url: '/v1/track/a..b' })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('rejects an id longer than 64 characters', async () => {
+    const app = server(async () => TRACK)
+    const res = await app.inject({ method: 'GET', url: `/v1/track/${'a'.repeat(65)}` })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('accepts a plain alphanumeric id', async () => {
+    const app = server(async () => TRACK)
+    const res = await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    expect(res.statusCode).toBe(200)
   })
 })

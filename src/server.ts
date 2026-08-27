@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
-import type { CacheStore } from './store.js'
+import { StoreError, type CacheStore } from './store.js'
 import type { Pool } from './browser.js'
 import type { Config } from './config.js'
 import type { Track, Album, Playlist } from './types.js'
@@ -30,6 +30,19 @@ export type ServerDeps = {
 const ENTITY_KINDS = ['track', 'album', 'playlist'] as const
 type EntityKind = (typeof ENTITY_KINDS)[number]
 
+// Spotify's own base62 ids are alphanumeric and (in practice) 22 characters,
+// but this is deliberately looser than that exact shape -- just "no path or
+// key-namespace metacharacters, and not unbounded" -- so a legitimate id
+// format Spotify might use elsewhere is never a false rejection. Rejecting
+// outside this pattern is what stops `req.params.id` from reaching Redis key
+// names (`:` builds an attacker-chosen key, e.g. `abc:lock` collides with
+// track `abc`'s own single-flight lock key) or `page.goto` (`..` navigates
+// away from the id's own entity page) unvalidated. This is input
+// *validation* -- rejecting a malformed key before it touches anything --
+// not the rate limiting the service's own constraints forbid; it applies
+// identically regardless of caller identity or request volume.
+const ENTITY_ID_PATTERN = /^[A-Za-z0-9]{1,64}$/
+
 // A separate key/namespace from the positive cache entry (`cacheKey`), not a
 // flag alongside it -- so a negative marker can never be misread by
 // `withCache`'s own `readEntry` as an `Entry<T>` (it doesn't share that
@@ -58,6 +71,15 @@ function negativeKey(kind: EntityKind, id: string): string {
 // breakage on a dashboard meant to alert on exactly that.
 function recordFailureMetrics(err: unknown): void {
   if (err instanceof NotFoundError) return
+  if (err instanceof StoreError) {
+    // The store itself failed -- Redis unreachable, a bounded retry giving
+    // up (see store.ts's fail-fast options) -- not the scraper. Counted as
+    // itself so a Redis outage doesn't masquerade as "extraction stopped
+    // matching Spotify's page" on a dashboard meant to alert on exactly that,
+    // and doesn't silently fall into the 'unknown' bucket either.
+    scrapeFailures.inc({ reason: 'store' })
+    return
+  }
   if (err instanceof ExtractionEmptyError) {
     // The canary: this counter is what makes "extraction stopped matching
     // Spotify's page" loud instead of silently returning nothing, which is
@@ -98,17 +120,32 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   }
 
   async function handleEntity(kind: EntityKind, id: string, reply: FastifyReply): Promise<unknown> {
-    const negative = await store.get(negativeKey(kind, id))
-    if (negative !== null) {
-      // A hit against the negative cache is not a new failure -- it's this
-      // throttle doing exactly its job -- so it does not touch
-      // scrapeFailures or extractionEmpty.
-      reply.header('X-Cache', 'negative')
-      reply.code(404)
-      return { error: 'not_found', id, message: 'previously confirmed absent' }
+    // Rejected before touching Redis or the pool -- a malformed id must
+    // never become a Redis key name or a page.goto target. See
+    // ENTITY_ID_PATTERN's own doc comment.
+    if (!ENTITY_ID_PATTERN.test(id)) {
+      reply.code(400)
+      return { error: 'invalid_id', id, message: 'id must match ^[A-Za-z0-9]{1,64}$' }
     }
 
     try {
+      // Moved inside the try (fix wave): this used to run before the try
+      // opened below, so a store failure here (Redis unreachable) escaped
+      // all of this function's error mapping entirely and fell through to
+      // Fastify's own default handler -- a bare 500 with a raw error message
+      // as the body, and none of scrapeFailures/recordFailureMetrics ever
+      // seeing it. A negative-cache lookup is exactly as store-dependent as
+      // the cache lookup inside withCache below; it gets the same handling.
+      const negative = await store.get(negativeKey(kind, id))
+      if (negative !== null) {
+        // A hit against the negative cache is not a new failure -- it's this
+        // throttle doing exactly its job -- so it does not touch
+        // scrapeFailures or extractionEmpty.
+        reply.header('X-Cache', 'negative')
+        reply.code(404)
+        return { error: 'not_found', id, message: 'previously confirmed absent' }
+      }
+
       // `cfg.produceBudgetMs` MUST be threaded through explicitly on every
       // call here. `withCache`'s `produceBudgetMs` parameter is optional
       // and defaults to a module constant that happens to match

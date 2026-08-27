@@ -88,3 +88,32 @@ describe.skipIf(!redisAvailable)('RedisStore (integration, requires real Redis)'
     await store.unlock(key)
   })
 })
+
+// Fix wave, finding 5. Unlike the integration suite above, this doesn't need
+// a real Redis to be running -- it specifically exercises what happens when
+// Redis is NOT reachable, which is exactly the scenario ioredis's own
+// defaults handle badly (a command issued while disconnected queues and
+// waits out up to 20 retries with backoff capped at 5000ms -- roughly 70s --
+// before rejecting; see src/store.ts's constructor for the fix). Pointing at
+// a local port nothing listens on means this runs offline in CI exactly like
+// the rest of the offline suite, with no docker/skip dance needed.
+describe('RedisStore fail-fast options (no Redis required)', () => {
+  it('answers ping() within a few seconds, not ~70s, when Redis is unreachable', async () => {
+    const store = new RedisStore('redis://127.0.0.1:1')
+    try {
+      const start = Date.now()
+      const ok = await store.ping()
+      const elapsed = Date.now() - start
+
+      expect(ok).toBe(false)
+      // Generous relative to the fixed client's expected worst case
+      // (roughly connectTimeout + a few small, capped retries -- a handful
+      // of seconds) while still nowhere near the ~70s the unbounded
+      // ioredis defaults produce -- so this stays robust on a slow CI
+      // runner without losing the ability to catch a reverted fix.
+      expect(elapsed).toBeLessThan(10_000)
+    } finally {
+      await store.close().catch(() => {})
+    }
+  }, 20_000)
+})
