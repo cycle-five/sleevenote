@@ -300,7 +300,12 @@ describe('withCache -- a failed produce is relayed to waiters', () => {
     let calls = 0
     const produce = async () => {
       calls++
-      await new Promise((r) => setTimeout(r, 50))
+      // Must outlast several of the waiter's 50ms polls. With a produce this
+      // slow the waiter is guaranteed to read the marker while no value yet
+      // exists -- which is the only window in which a leftover marker can do
+      // damage, and so the only window that tests the clearing. A fast
+      // produce lets the value win the race and the test passes either way.
+      await new Promise((r) => setTimeout(r, 400))
       return { n: 42 }
     }
     const call = () =>
