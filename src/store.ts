@@ -9,6 +9,11 @@ import Redis from 'ioredis'
 export interface CacheStore {
   get(key: string): Promise<string | null>
   set(key: string, value: string, ttlSeconds: number): Promise<void>
+  // Distinct from `unlock` despite both being a DEL underneath: `unlock`
+  // releases an advisory lock, `del` removes an ordinary key. The cache's
+  // failure relay needs the second (it clears a stale failure marker), and
+  // borrowing `unlock` for it would make every call site lie about intent.
+  del(key: string): Promise<void>
   lock(key: string, ttlSeconds: number): Promise<boolean>
   unlock(key: string): Promise<void>
   ping(): Promise<boolean>
@@ -98,6 +103,16 @@ export class RedisStore implements CacheStore {
     }
   }
 
+  async del(key: string): Promise<void> {
+    try {
+      await this.client.del(key)
+    } catch (err) {
+      throw new StoreError(`RedisStore.del failed: ${err instanceof Error ? err.message : String(err)}`, {
+        cause: err,
+      })
+    }
+  }
+
   async lock(key: string, ttlSeconds: number): Promise<boolean> {
     try {
       const result = await this.client.set(key, '1', 'EX', ttlSeconds, 'NX')
@@ -155,6 +170,10 @@ export class MemoryStore implements CacheStore {
 
   async set(key: string, value: string, ttlSeconds: number): Promise<void> {
     this.values.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 })
+  }
+
+  async del(key: string): Promise<void> {
+    this.values.delete(key)
   }
 
   async lock(key: string, ttlSeconds: number): Promise<boolean> {

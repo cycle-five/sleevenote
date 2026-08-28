@@ -5,6 +5,7 @@ export type Config = {
   contextMaxUses: number
   navTimeoutMs: number
   produceBudgetMs: number
+  failureRelayTtl: number
   ttl: { track: number; album: number; playlist: number; negative: number }
 }
 
@@ -29,6 +30,10 @@ function num(raw: string | undefined, fallback: number): number {
 // own overall timeout, so one number governs both.
 export const DEFAULT_PRODUCE_BUDGET_MS = 150_000
 
+// Mirrors cache.ts's DEFAULT_FAILURE_TTL_SECONDS. Defined here rather than
+// imported to keep config.ts free of a dependency on the cache module.
+export const DEFAULT_FAILURE_TTL_SECONDS = 5
+
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   return {
     port: num(env.PORT, 3000),
@@ -37,6 +42,15 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     contextMaxUses: num(env.CONTEXT_MAX_USES, 50),
     navTimeoutMs: num(env.NAV_TIMEOUT_MS, 45_000),
     produceBudgetMs: num(env.PRODUCE_BUDGET_MS, DEFAULT_PRODUCE_BUDGET_MS),
+    // How long a failed produce() stays visible to the callers waiting on
+    // that same key (src/cache.ts's FailureCodec). Deliberately seconds, not
+    // minutes: this is a handoff to the cohort already waiting, not a
+    // negative cache for errors. Raising it does buy throttling of a
+    // permanently-broken entity -- at the price of caching our own bugs, so
+    // that a fixed and redeployed scraper keeps serving the old failure for
+    // this long. That trade is the operator's to make, which is why it is a
+    // knob and not a constant.
+    failureRelayTtl: num(env.FAILURE_RELAY_TTL, DEFAULT_FAILURE_TTL_SECONDS),
     ttl: {
       // A track's artist and title never change; an album's listing is fixed at
       // release. Playlists genuinely change, so they get hours, not days.

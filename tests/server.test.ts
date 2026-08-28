@@ -391,3 +391,59 @@ describe('entity id validation (fix wave, finding 3)', () => {
     expect(res.statusCode).toBe(200)
   })
 })
+
+// End-to-end proof of what the failure codec is for. A waiter is already past
+// the negative-cache check by the time the lock holder writes it, so the only
+// thing that can tell a waiter "this id does not exist" is the relayed error
+// -- and it has to survive the round trip through the store with its *type*
+// intact. Flatten it to a plain Error anywhere along the way and the waiter
+// gets a generic 502 for an entity the holder answered 404, which is exactly
+// the "same request, two answers, depending on who won the lock" the codec
+// exists to prevent.
+describe('concurrent callers on a failing entity', () => {
+  const fastCfg = loadConfig({ PRODUCE_BUDGET_MS: '2000' })
+  function fastServer(extract: any, store = new MemoryStore()) {
+    return buildServer({ cfg: fastCfg, store, pool: fakePool as any, extract })
+  }
+
+  it('answers every waiter 404 -- not 502 -- and extracts only once', async () => {
+    let calls = 0
+    const app = fastServer(async () => {
+      calls++
+      await new Promise((r) => setTimeout(r, 50))
+      throw new NotFoundError('no such track')
+    })
+
+    const [a, b, c] = await Promise.all([
+      app.inject({ method: 'GET', url: '/v1/track/aaa' }),
+      app.inject({ method: 'GET', url: '/v1/track/aaa' }),
+      app.inject({ method: 'GET', url: '/v1/track/aaa' }),
+    ])
+
+    expect(calls).toBe(1)
+    for (const res of [a, b, c]) {
+      expect(res.statusCode).toBe(404)
+      expect(res.json().error).toBe('not_found')
+    }
+  })
+
+  it('preserves the 504 timeout distinction for waiters too', async () => {
+    let calls = 0
+    const app = fastServer(async () => {
+      calls++
+      await new Promise((r) => setTimeout(r, 50))
+      throw new ExtractionTimeoutError('budget exhausted')
+    })
+
+    const [a, b] = await Promise.all([
+      app.inject({ method: 'GET', url: '/v1/album/bbb' }),
+      app.inject({ method: 'GET', url: '/v1/album/bbb' }),
+    ])
+
+    expect(calls).toBe(1)
+    for (const res of [a, b]) {
+      expect(res.statusCode).toBe(504)
+      expect(res.json().error).toBe('timeout')
+    }
+  })
+})

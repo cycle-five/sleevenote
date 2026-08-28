@@ -3,7 +3,7 @@ import { StoreError, type CacheStore } from './store.js'
 import type { Pool } from './browser.js'
 import type { Config } from './config.js'
 import type { Track, Album, Playlist } from './types.js'
-import { cacheKey, withCache } from './cache.js'
+import { cacheKey, withCache, type FailureCodec } from './cache.js'
 import {
   NotFoundError,
   ExtractionEmptyError,
@@ -51,6 +51,61 @@ const ENTITY_ID_PATTERN = /^[A-Za-z0-9]{1,64}$/
 // `withCache` uses for real values -- a negative result doesn't need a
 // stale-on-error fallback, it just needs to stop us re-scraping an id that
 // was *just* confirmed absent.
+// The wire form of a produce() failure handed from the caller that hit it to
+// the callers waiting on the same key. A tagged union rather than a loose
+// bag: the `kind` values below are in one-to-one correspondence with the
+// `instanceof` chain in the route's catch block, and that chain is the thing
+// that decides between 404, 502-empty, 502-incomplete and 504. A waiter that
+// got back a flattened `Error` would be answered with a generic 502 for an
+// entity the lock holder answered with a 404 -- the same request resolved two
+// different ways depending on which caller happened to win a race.
+//
+// Adding a member here without adding its arm to the catch block (or vice
+// versa) is the failure mode to watch for; they are meant to be read
+// together.
+type RelayedFailure =
+  | { kind: 'not_found'; message: string }
+  | { kind: 'extraction_empty'; message: string }
+  | { kind: 'extraction_incomplete'; message: string }
+  | { kind: 'timeout'; message: string }
+  | { kind: 'store'; message: string }
+  | { kind: 'other'; message: string }
+
+function classifyFailure(err: unknown): RelayedFailure {
+  const message = err instanceof Error ? err.message : String(err)
+  if (err instanceof NotFoundError) return { kind: 'not_found', message }
+  if (err instanceof ExtractionEmptyError) return { kind: 'extraction_empty', message }
+  if (err instanceof ExtractionIncompleteError) return { kind: 'extraction_incomplete', message }
+  if (err instanceof ExtractionTimeoutError) return { kind: 'timeout', message }
+  if (err instanceof StoreError) return { kind: 'store', message }
+  return { kind: 'other', message }
+}
+
+function reviveFailure(f: RelayedFailure): unknown {
+  switch (f.kind) {
+    case 'not_found':
+      return new NotFoundError(f.message)
+    case 'extraction_empty':
+      return new ExtractionEmptyError(f.message)
+    case 'extraction_incomplete':
+      return new ExtractionIncompleteError(f.message)
+    case 'timeout':
+      return new ExtractionTimeoutError(f.message)
+    case 'store':
+      return new StoreError(f.message)
+    case 'other':
+      return new Error(f.message)
+  }
+}
+
+function failureCodecFor(cfg: Config): FailureCodec {
+  return {
+    ttlSeconds: cfg.failureRelayTtl,
+    encode: (err: unknown) => JSON.stringify(classifyFailure(err)),
+    decode: (raw: string) => reviveFailure(JSON.parse(raw) as RelayedFailure),
+  }
+}
+
 function negativeKey(kind: EntityKind, id: string): string {
   return `${cacheKey(kind, id)}:absent`
 }
@@ -163,6 +218,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         now: now(),
         produce: () => timedExtract(kind, id),
         produceBudgetMs: cfg.produceBudgetMs,
+        failureCodec: failureCodecFor(cfg),
       })
       // withCache's stale-on-error fallback can serve a value while
       // discarding the produce() failure that caused it to fall back at

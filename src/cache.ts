@@ -58,6 +58,85 @@ function isFresh(entry: Entry<unknown>, ttlSeconds: number, now: number): boolea
 export type CacheResult<T> = { value: T; hit: 'fresh' | 'stale' | 'miss'; staleError?: unknown }
 
 /**
+ * How a failed `produce()` crosses the gap between the caller that hit it
+ * and the callers waiting on that same key.
+ *
+ * The relay exists because a failure writes no value, and the waiter loop
+ * can only see values -- so without it, waiters cannot distinguish "the
+ * holder failed" from "the holder is slow". They wait out the entire
+ * `produceBudgetMs` and then all produce at once. See the regression tests
+ * in tests/cache.test.ts for what that costs.
+ *
+ * `encode`/`decode` are supplied by the caller because the error *taxonomy*
+ * belongs to the caller, not to a generic cache: `src/server.ts` maps
+ * NotFoundError / ExtractionEmptyError / ExtractionIncompleteError /
+ * ExtractionTimeoutError onto four different status codes, and a waiter that
+ * got a flattened `Error` back would be answered differently from the holder
+ * purely because it lost a race for the lock.
+ *
+ * `ttlSeconds` should stay SHORT. This is a handoff to the cohort already
+ * waiting, not a negative cache: a marker that outlives the cohort starts
+ * caching our own bugs, so a scraper fixed and redeployed would keep serving
+ * the old failure until the marker expired. Long enough for a polling waiter
+ * to notice (they poll every LOCK_POLL_INTERVAL_MS), no longer.
+ */
+export type FailureCodec = {
+  ttlSeconds: number
+  encode(err: unknown): string
+  decode(raw: string): unknown
+}
+
+export const DEFAULT_FAILURE_TTL_SECONDS = 5
+
+// Used when a caller supplies no codec of its own. Carries the message and
+// nothing else -- enough to stop the herd, which is the part that must never
+// depend on the caller remembering to configure something, but not enough to
+// preserve an error's type. Callers that map errors onto distinct responses
+// (server.ts) pass their own.
+export const DEFAULT_FAILURE_CODEC: FailureCodec = {
+  ttlSeconds: DEFAULT_FAILURE_TTL_SECONDS,
+  encode: (err: unknown) => JSON.stringify({ message: err instanceof Error ? err.message : String(err) }),
+  decode: (raw: string) => new Error((JSON.parse(raw) as { message: string }).message),
+}
+
+function failureKey(key: string): string {
+  return `${key}:fail`
+}
+
+// Best-effort on purpose. The relay is an optimization over the pre-existing
+// behaviour (waiters time out and produce), so a store that refuses the write
+// must degrade to that, never replace the real produce() error with a store
+// error on its way out of the holder's catch block.
+async function publishFailure(
+  store: CacheStore,
+  key: string,
+  err: unknown,
+  codec: FailureCodec,
+): Promise<void> {
+  try {
+    await store.set(failureKey(key), codec.encode(err), codec.ttlSeconds)
+  } catch {
+    // Swallowed deliberately -- see above.
+  }
+}
+
+async function readFailure(store: CacheStore, key: string, codec: FailureCodec): Promise<{ err: unknown } | null> {
+  let raw: string | null
+  try {
+    raw = await store.get(failureKey(key))
+  } catch {
+    return null
+  }
+  if (raw === null) return null
+  try {
+    return { err: codec.decode(raw) }
+  } catch {
+    // A corrupt marker is not a marker.
+    return null
+  }
+}
+
+/**
  * Run `produce`, cache the result, and report it as a miss -- unless it
  * throws, in which case an existing entry is served instead of the error, if
  * one is there to serve.
@@ -133,9 +212,11 @@ export async function withCache<T>(opts: {
   now: number
   produce: () => Promise<T>
   produceBudgetMs?: number
+  failureCodec?: FailureCodec
 }): Promise<CacheResult<T>> {
   const { store, key, ttlSeconds, now, produce } = opts
   const produceBudgetMs = opts.produceBudgetMs ?? DEFAULT_PRODUCE_BUDGET_MS
+  const failureCodec = opts.failureCodec ?? DEFAULT_FAILURE_CODEC
   const lockTtlSeconds = Math.ceil(produceBudgetMs / 1000)
   const lockWaitTimeoutMs = produceBudgetMs
 
@@ -148,8 +229,30 @@ export async function withCache<T>(opts: {
   const acquired = await store.lock(lockKey, lockTtlSeconds)
 
   if (acquired) {
+    // A marker left by an earlier cohort would make this run's waiters report
+    // a failure for a produce() that is still in flight and may yet succeed.
+    // Clearing it here is what lets a waiter read "marker present" as "the
+    // produce I am waiting on has already failed" with no further qualifiers.
     try {
-      return await produceAndCache(store, key, ttlSeconds, now, produce)
+      await store.del(failureKey(key))
+    } catch {
+      // Non-fatal: a marker we failed to clear can only cost us the relay,
+      // and the waiter's own budget still bounds the wait.
+    }
+    try {
+      const result = await produceAndCache(store, key, ttlSeconds, now, produce)
+      // produce() can fail without this call throwing: stale-on-error swallows
+      // the error and returns an existing entry, reporting it via staleError.
+      // Waiters demand a *fresh* entry, so that stale entry does not release
+      // them -- publish, or they wait out the whole budget for a produce that
+      // is already over.
+      if (result.staleError !== undefined) {
+        await publishFailure(store, key, result.staleError, failureCodec)
+      }
+      return result
+    } catch (err) {
+      await publishFailure(store, key, err, failureCodec)
+      throw err
     } finally {
       await store.unlock(lockKey)
     }
@@ -164,6 +267,22 @@ export async function withCache<T>(opts: {
     const candidate = await readEntry<T>(store, key)
     if (candidate && isFresh(candidate, ttlSeconds, now)) {
       return { value: candidate.value, hit: 'fresh' }
+    }
+    const failed = await readFailure(store, key, failureCodec)
+    if (failed) {
+      // The holder finished, and failed. Apply exactly the policy it applied
+      // to itself (produceAndCache's own catch): serve an existing entry if
+      // there is one, else surface the error. Anything else would answer the
+      // same request two different ways depending on who won the lock.
+      const found = await readEntry<T>(store, key)
+      if (found) {
+        return {
+          value: found.value,
+          hit: isFresh(found, ttlSeconds, now) ? 'fresh' : 'stale',
+          staleError: failed.err,
+        }
+      }
+      throw failed.err
     }
   }
 

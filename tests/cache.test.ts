@@ -197,3 +197,119 @@ describe('produceAndCache: a write failure is not treated as a produce() failure
     ).rejects.toBe(writeErr)
   })
 })
+
+// A produce() that fails is not a produce() that is slow. The waiter loop
+// used to be unable to tell the difference: it polled only for a *fresh
+// value*, and a failure never writes one -- so every waiter polled out its
+// entire produceBudgetMs (150s in production) and then fell through to
+// produce directly, all at once, with no lock between them. Five concurrent
+// requests for one permanently-broken entity became five concurrent Chromium
+// loads 150s later. Because the browser pool is small and shared across all
+// entities, that herd queues on the pool and starves requests for unrelated
+// entities behind it -- one broken entity taking down the service.
+//
+// The fix relays the failure: the lock holder publishes it before unlocking,
+// and waiters read it and stop.
+describe('withCache -- a failed produce is relayed to waiters', () => {
+  it('runs produce exactly once for a cohort of concurrent callers, and fails them all', async () => {
+    const store = new MemoryStore()
+    let calls = 0
+    const produce = async () => {
+      calls++
+      await new Promise((r) => setTimeout(r, 50))
+      throw new Error('extraction is broken for this entity')
+    }
+    const call = () =>
+      withCache({ store, key: 'k', ttlSeconds: 60, now: 1000, produce, produceBudgetMs: 2000 })
+
+    const settled = await Promise.allSettled([call(), call(), call(), call(), call()])
+
+    expect(calls).toBe(1)
+    expect(settled.every((s) => s.status === 'rejected')).toBe(true)
+    for (const s of settled) {
+      if (s.status === 'rejected') {
+        expect(String((s.reason as Error).message)).toContain('extraction is broken')
+      }
+    }
+  })
+
+  it('gives a waiter back the same error type the holder hit, via the codec', async () => {
+    class NotFoundish extends Error {}
+    const store = new MemoryStore()
+    const codec = {
+      ttlSeconds: 5,
+      encode: (err: unknown) =>
+        JSON.stringify({ kind: err instanceof NotFoundish ? 'nf' : 'other', message: String((err as Error).message) }),
+      decode: (raw: string) => {
+        const p = JSON.parse(raw) as { kind: string; message: string }
+        return p.kind === 'nf' ? new NotFoundish(p.message) : new Error(p.message)
+      },
+    }
+    let calls = 0
+    const produce = async () => {
+      calls++
+      await new Promise((r) => setTimeout(r, 50))
+      throw new NotFoundish('no such entity')
+    }
+    const call = () =>
+      withCache({ store, key: 'k', ttlSeconds: 60, now: 1000, produce, produceBudgetMs: 2000, failureCodec: codec })
+
+    const settled = await Promise.allSettled([call(), call()])
+    const reasons = settled.map((s) => (s.status === 'rejected' ? s.reason : null))
+
+    // Both halves matter: without the relay the waiter would produce its own
+    // NotFoundish (so the type assertion alone passes vacuously) -- what
+    // proves the relay carried the type is that only one produce ever ran.
+    expect(calls).toBe(1)
+    expect(reasons.every((r) => r instanceof NotFoundish)).toBe(true)
+  })
+
+  // Stale-on-error is the holder's policy; it must be the waiter's too.
+  // Otherwise a waiter throws for an entity the holder happily served from a
+  // stale entry -- the same request answered two different ways depending on
+  // which caller happened to win the lock.
+  it('serves a waiter a stale entry rather than the error, when one exists', async () => {
+    const store = new MemoryStore()
+    await store.set('k', JSON.stringify({ value: { n: 7 }, storedAt: 0 }), 3600)
+    let calls = 0
+    const produce = async () => {
+      calls++
+      await new Promise((r) => setTimeout(r, 50))
+      throw new Error('produce failed')
+    }
+    const call = () =>
+      withCache({ store, key: 'k', ttlSeconds: 60, now: 10_000, produce, produceBudgetMs: 2000 })
+
+    const [a, b] = await Promise.all([call(), call()])
+
+    expect(calls).toBe(1)
+    expect(a.value).toEqual({ n: 7 })
+    expect(b.value).toEqual({ n: 7 })
+    expect(a.hit).toBe('stale')
+    expect(b.hit).toBe('stale')
+    expect(a.staleError).toBeDefined()
+    expect(b.staleError).toBeDefined()
+  })
+
+  // The marker means "the produce that just ran failed". A leftover from an
+  // earlier cohort would make a waiter report failure for a produce that is
+  // still running -- and might yet succeed. The holder clears it on acquire.
+  it('does not let a leftover failure marker poison the next produce', async () => {
+    const store = new MemoryStore()
+    await store.set('k:fail', JSON.stringify({ message: 'an old failure' }), 3600)
+    let calls = 0
+    const produce = async () => {
+      calls++
+      await new Promise((r) => setTimeout(r, 50))
+      return { n: 42 }
+    }
+    const call = () =>
+      withCache({ store, key: 'k', ttlSeconds: 60, now: 1000, produce, produceBudgetMs: 2000 })
+
+    const [a, b] = await Promise.all([call(), call()])
+
+    expect(calls).toBe(1)
+    expect(a.value).toEqual({ n: 42 })
+    expect(b.value).toEqual({ n: 42 })
+  })
+})
