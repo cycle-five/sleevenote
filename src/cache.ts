@@ -1,9 +1,7 @@
 import type { CacheStore } from './store.js'
 import { DEFAULT_PRODUCE_BUDGET_MS } from './config.js'
 
-// Tests import `MemoryStore` (and the rest of the store surface) from this
-// module rather than from `store.js` directly -- callers of the cache only
-// need one import path.
+// Callers of the cache need only one import path.
 export * from './store.js'
 
 export type Entry<T> = { value: T; storedAt: number }
@@ -14,11 +12,8 @@ export function cacheKey(type: 'track' | 'album' | 'playlist', id: string): stri
 
 const LOCK_POLL_INTERVAL_MS = 50
 
-// Physical entries outlive their logical TTL by this factor, so an expired
-// entry is still sitting in the store -- and available to stale-on-error --
-// for a while after it stops being served as fresh. Without this the store
-// would evict a key at almost the same moment it goes stale, and
-// stale-on-error would have nothing left to serve.
+// Physical entries outlive their logical TTL by this factor, so stale-on-error
+// still has something to serve after an entry stops being fresh.
 const STALE_GRACE_MULTIPLIER = 2
 
 function sleep(ms: number): Promise<void> {
@@ -40,45 +35,19 @@ function isFresh(entry: Entry<unknown>, ttlSeconds: number, now: number): boolea
   return now - entry.storedAt < ttlSeconds
 }
 
-// `staleError` is set exactly when a value is being served ONLY because
-// produce() threw and an existing entry happened to be there to fall back
-// on (both the direct stale-on-error path and the lock-wait-timeout
-// fallback landing on this same catch branch) -- never on a genuine cache
-// hit (the early-return fresh checks in `withCache` never call
-// `produceAndCache` at all) and never on a clean miss (produce() succeeded,
-// so there's nothing to report). Task 6 fix round 2: this field exists
-// because `withCache` used to swallow that error entirely once a fallback
-// entry existed, which meant NotFoundError/ExtractionEmptyError/
-// ExtractionIncompleteError never reached a caller's error-mapping code for
-// any entity with a prior cache entry -- silencing the extraction-empty
-// canary for exactly the entities a Spotify redesign is most likely to have
-// already cached. The *value* returned is unchanged by this field: serving
-// stale is still correct behaviour, this only restores the caller's ability
-// to ALSO observe that production failed.
+// `staleError` is set only when a value is served *because* produce() threw
+// and an entry happened to be there to fall back on -- never on a genuine hit
+// or a clean miss. It does not change the value returned; it restores the
+// caller's ability to observe that production failed at all.
 export type CacheResult<T> = { value: T; hit: 'fresh' | 'stale' | 'miss'; staleError?: unknown }
 
 /**
- * How a failed `produce()` crosses the gap between the caller that hit it
- * and the callers waiting on that same key.
+ * How a failed `produce()` reaches the callers waiting on the same key.
+ * Without it they cannot tell a failed holder from a slow one, and stampede.
  *
- * The relay exists because a failure writes no value, and the waiter loop
- * can only see values -- so without it, waiters cannot distinguish "the
- * holder failed" from "the holder is slow". They wait out the entire
- * `produceBudgetMs` and then all produce at once. See the regression tests
- * in tests/cache.test.ts for what that costs.
- *
- * `encode`/`decode` are supplied by the caller because the error *taxonomy*
- * belongs to the caller, not to a generic cache: `src/server.ts` maps
- * NotFoundError / ExtractionEmptyError / ExtractionIncompleteError /
- * ExtractionTimeoutError onto four different status codes, and a waiter that
- * got a flattened `Error` back would be answered differently from the holder
- * purely because it lost a race for the lock.
- *
- * `ttlSeconds` should stay SHORT. This is a handoff to the cohort already
- * waiting, not a negative cache: a marker that outlives the cohort starts
- * caching our own bugs, so a scraper fixed and redeployed would keep serving
- * the old failure until the marker expired. Long enough for a polling waiter
- * to notice (they poll every LOCK_POLL_INTERVAL_MS), no longer.
+ * `encode`/`decode` belong to the caller because the error taxonomy does.
+ * `ttlSeconds` must stay short -- this is a handoff to the waiting cohort,
+ * not a negative cache. See docs/design-notes.md.
  */
 export type FailureCodec = {
   ttlSeconds: number
@@ -88,11 +57,9 @@ export type FailureCodec = {
 
 export const DEFAULT_FAILURE_TTL_SECONDS = 5
 
-// Used when a caller supplies no codec of its own. Carries the message and
-// nothing else -- enough to stop the herd, which is the part that must never
-// depend on the caller remembering to configure something, but not enough to
-// preserve an error's type. Callers that map errors onto distinct responses
-// (server.ts) pass their own.
+// Fallback codec: enough to stop the herd without the caller having to
+// configure anything, but it does not preserve error types. Callers that map
+// errors onto distinct responses (server.ts) supply their own.
 export const DEFAULT_FAILURE_CODEC: FailureCodec = {
   ttlSeconds: DEFAULT_FAILURE_TTL_SECONDS,
   encode: (err: unknown) => JSON.stringify({ message: err instanceof Error ? err.message : String(err) }),
@@ -103,10 +70,9 @@ function failureKey(key: string): string {
   return `${key}:fail`
 }
 
-// Best-effort on purpose. The relay is an optimization over the pre-existing
-// behaviour (waiters time out and produce), so a store that refuses the write
-// must degrade to that, never replace the real produce() error with a store
-// error on its way out of the holder's catch block.
+// Best-effort: the relay is an optimization over "waiters time out and
+// produce", so a refused write must degrade to that rather than replace the
+// real produce() error with a store error.
 async function publishFailure(
   store: CacheStore,
   key: string,
@@ -137,20 +103,10 @@ async function readFailure(store: CacheStore, key: string, codec: FailureCodec):
 }
 
 /**
- * Run `produce`, cache the result, and report it as a miss -- unless it
- * throws, in which case an existing entry is served instead of the error, if
- * one is there to serve.
- *
- * That entry is not necessarily stale: this is also called from the
- * lock-wait timeout fallback, so it's possible for a *different* caller to
- * have raced ahead of us, produced successfully, and written a fresh entry
- * while we were still failing. `hit` feeds cache-hit-rate observability, so
- * it must reflect what's actually true, not just "produce() threw" -- an
- * entry found here is labelled 'fresh' or 'stale' by the same freshness
- * check as everywhere else, never assumed. `staleError` is set in both
- * sub-cases (see its own doc comment) -- a real produce() failure happened
- * either way, and a caller that wants to alert on it shouldn't have that
- * signal depend on exactly which concurrent caller's write won a race.
+ * Run `produce` and cache the result, or serve an existing entry if it throws.
+ * That entry is not necessarily stale -- a racing caller may have just written
+ * a fresh one -- so `hit` is decided by the usual freshness check, never
+ * assumed from the fact that produce() failed.
  */
 async function produceAndCache<T>(
   store: CacheStore,
@@ -159,17 +115,9 @@ async function produceAndCache<T>(
   now: number,
   produce: () => Promise<T>,
 ): Promise<CacheResult<T>> {
-  // Fix wave: only `produce()` is inside this try. It used to also wrap the
-  // `store.set()` write below, so a cache-*write* failure (Redis down at the
-  // moment we try to persist a value we successfully scraped) took the exact
-  // same fallback path as a scrape failure -- eligible to be silently masked
-  // behind a stale value, and, when there was nothing to fall back on,
-  // rethrown as if `produce()` itself had failed. Neither is right: the
-  // scrape succeeded, only the write to Redis didn't, and that's a distinct
-  // failure a caller (server.ts's `recordFailureMetrics`) needs to be able
-  // to tell apart from "extraction stopped matching Spotify's page". A write
-  // failure now propagates directly, unmediated by the stale-on-error logic
-  // that exists specifically for `produce()`.
+  // Only `produce()` is inside this try. A failed `store.set` below means the
+  // scrape succeeded and only the write didn't -- a distinct failure that must
+  // propagate rather than be masked behind a stale value.
   let value: T
   try {
     value = await produce()
@@ -190,20 +138,12 @@ async function produceAndCache<T>(
 }
 
 /**
- * The cache policy: freshness by stored timestamp (not the store's own TTL
- * clock -- `now` is caller-supplied so this is testable without wall-clock
- * time actually passing), single-flight production via an advisory lock, and
- * stale-on-error fallback. See task-3-brief.md and the team lead's context
- * for why these two behaviours are the point of this module.
+ * The cache policy: freshness by stored timestamp (`now` is caller-supplied so
+ * this is testable without waiting), single-flight production via an advisory
+ * lock, and stale-on-error fallback.
  *
- * `produceBudgetMs` bounds how long `produce()` may legitimately run (see
- * `DEFAULT_PRODUCE_BUDGET_MS` in config.ts for the derivation) and governs
- * both the single-flight lock's TTL and how long a waiter polls before
- * falling through to produce directly -- one number governs both, so a
- * caller that threads its own `config.produceBudgetMs` through here can
- * never have the lock disagree with reality about how long production takes.
- * Defaults to the same value `loadConfig` defaults to, for callers (and
- * tests) that don't have a `Config` to hand.
+ * `produceBudgetMs` governs both the lock's TTL and how long a waiter polls,
+ * so the lock can never disagree with how long production actually takes.
  */
 export async function withCache<T>(opts: {
   store: CacheStore
@@ -229,10 +169,8 @@ export async function withCache<T>(opts: {
   const acquired = await store.lock(lockKey, lockTtlSeconds)
 
   if (acquired) {
-    // A marker left by an earlier cohort would make this run's waiters report
-    // a failure for a produce() that is still in flight and may yet succeed.
-    // Clearing it here is what lets a waiter read "marker present" as "the
-    // produce I am waiting on has already failed" with no further qualifiers.
+    // Clearing an earlier cohort's marker is what lets a waiter read "marker
+    // present" as "the produce I am waiting on has already failed".
     try {
       await store.del(failureKey(key))
     } catch {
@@ -241,11 +179,9 @@ export async function withCache<T>(opts: {
     }
     try {
       const result = await produceAndCache(store, key, ttlSeconds, now, produce)
-      // produce() can fail without this call throwing: stale-on-error swallows
-      // the error and returns an existing entry, reporting it via staleError.
-      // Waiters demand a *fresh* entry, so that stale entry does not release
-      // them -- publish, or they wait out the whole budget for a produce that
-      // is already over.
+      // produce() can fail without this throwing (stale-on-error). Waiters
+      // demand a *fresh* entry, so publish or they wait out the whole budget
+      // for a produce that is already over.
       if (result.staleError !== undefined) {
         await publishFailure(store, key, result.staleError, failureCodec)
       }
@@ -258,9 +194,7 @@ export async function withCache<T>(opts: {
     }
   }
 
-  // Someone else is producing this key. Poll for them to finish rather than
-  // doing redundant work ourselves -- this is what makes concurrent misses
-  // for the same key share a single produce() call.
+  // Someone else is producing this key; poll rather than duplicate the work.
   const deadline = Date.now() + lockWaitTimeoutMs
   while (Date.now() < deadline) {
     await sleep(LOCK_POLL_INTERVAL_MS)
@@ -270,10 +204,9 @@ export async function withCache<T>(opts: {
     }
     const failed = await readFailure(store, key, failureCodec)
     if (failed) {
-      // The holder finished, and failed. Apply exactly the policy it applied
-      // to itself (produceAndCache's own catch): serve an existing entry if
-      // there is one, else surface the error. Anything else would answer the
-      // same request two different ways depending on who won the lock.
+      // The holder finished and failed. Apply the same policy it applied to
+      // itself, or the same request gets two answers depending on who won the
+      // lock.
       const found = await readEntry<T>(store, key)
       if (found) {
         return {
@@ -286,8 +219,7 @@ export async function withCache<T>(opts: {
     }
   }
 
-  // The lock holder took too long -- crashed mid-produce, or just slow.
-  // Either way, a slow peer must not become an error for this caller: fall
-  // through and produce directly instead of waiting forever or failing.
+  // Holder crashed or is simply slow. A slow peer must not become this
+  // caller's error, so produce directly rather than waiting or failing.
   return produceAndCache(store, key, ttlSeconds, now, produce)
 }

@@ -27,9 +27,8 @@ function asNumber(value: unknown): number | null {
 function pathfinderData(recorded: Recorded[]): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = []
   for (const raw of recorded) {
-    // `recorded` reaches us via `JSON.parse(...) as Recorded[]` with no
-    // runtime validation, so a malformed entry (null, a non-object) is a
-    // realistic input, not just an adversarial one -- never throw on it.
+    // `recorded` arrives unvalidated, so malformed entries are realistic
+    // input, not adversarial. Never throw on them.
     const entry = asRecord(raw)
     if (!entry) continue
     if (asString(entry['url']) !== PATHFINDER_URL) continue
@@ -41,10 +40,8 @@ function pathfinderData(recorded: Recorded[]): Record<string, unknown>[] {
 }
 
 /**
- * Parse the id segment out of a Spotify URI, e.g.
- * `spotify:track:0c6xIDDpzE81m2q797ordA` -> `0c6xIDDpzE81m2q797ordA`.
- * This is the uniform, reliable way to get an id -- `.id` fields are
- * inconsistently present across contexts, but `.uri` always is.
+ * `spotify:track:0c6xIDD...` -> `0c6xIDD...`. Uses `.uri` because `.id` is
+ * inconsistently present across contexts and `.uri` always is.
  */
 function idFromUri(uri: unknown): string | null {
   const s = asString(uri)
@@ -55,9 +52,8 @@ function idFromUri(uri: unknown): string | null {
 }
 
 /**
- * Pick the best image URL out of a `coverArt`/`images`-style sources array:
- * `{ sources: [{ url, width, height }] }`. Rule: the entry with the largest
- * `width`; if `width` is absent (null) on every entry, take the last entry.
+ * Best image from `{ sources: [{ url, width, height }] }`: largest `width`,
+ * falling back to the last entry when every `width` is null.
  */
 function bestImage(sourcesHolder: unknown): string | null {
   const holder = asRecord(sourcesHolder)
@@ -74,8 +70,6 @@ function bestImage(sourcesHolder: unknown): string | null {
   }
   if (entries.length === 0) return null
 
-  // Largest width wins. If every entry's width is null, fall back to the
-  // last entry in the array.
   let best: { url: string; width: number | null } | null = null
   for (const entry of entries) {
     if (entry.width === null) continue
@@ -179,12 +173,9 @@ export function normalizeTrack(recorded: Recorded[], id: string): Track | null {
 // --- album ---------------------------------------------------------------
 
 /**
- * The one `data.albumUnion` that is this album (not the merch-widget
- * response sharing the same key, not a different album), by the same rules
- * `normalizeAlbum` uses. Factored out so `albumTotalCount` can read
- * `tracksV2.totalCount` off the same entity `normalizeAlbum` reads its
- * tracks from, without re-deriving "which response is the real one" a
- * second time.
+ * The one `data.albumUnion` that is this album -- not the merch-widget
+ * response sharing the key, not a different album. Factored out so
+ * `albumTotalCount` reads its total off the same entity the tracks come from.
  */
 function findAlbumUnion(recorded: Recorded[], id: string): Record<string, unknown> | null {
   for (const data of pathfinderData(recorded)) {
@@ -228,11 +219,8 @@ export function normalizeAlbum(recorded: Recorded[], id: string): Album | null {
 }
 
 /**
- * The album's declared track count (`tracksV2.totalCount`). A caller
- * compares this against `albumItemCount` -- NOT against
- * `normalizeAlbum(...).tracks.length` -- to detect a partial recovery.
- * Returns `null` if the entity itself can't be found, or if `totalCount` is
- * absent/non-numeric.
+ * The album's declared track count. Compare against `albumItemCount`, never
+ * against `normalizeAlbum(...).tracks.length`.
  */
 export function albumTotalCount(recorded: Recorded[], id: string): number | null {
   const albumUnion = findAlbumUnion(recorded, id)
@@ -242,34 +230,10 @@ export function albumTotalCount(recorded: Recorded[], id: string): number | null
 }
 
 /**
- * Every `albumUnion.tracksV2` batch recorded for this album, in recording
- * order -- the raw candidate set `albumItemsByPosition` merges track items
- * out of.
- *
- * A >50-track album splits `tracksV2.items` across multiple responses (see
- * docs/captured-shapes.md's "Album" pagination findings), and only the
- * first of those also happens to be the entity-bearing response
- * `findAlbumUnion` returns -- later batches carry no `uri` at all, so
- * uri-matching (which correctly picks out the *entity*, above) can't also
- * be used to find every *batch*. There is likewise no `pagingInfo` on an
- * album batch the way there is on a playlist page, so `playlistItemsByIndex`'s
- * "page-bearing" filter has no album equivalent either.
- *
- * `tracksV2.totalCount` matching the entity's declared total is the only
- * discriminator the recorded shape actually offers here. It is a real
- * filter -- it rejects a differently-sized album's batch outright -- but it
- * is NOT a guarantee: two different albums that happen to declare the same
- * track count, captured in the same recording, would be indistinguishable
- * by this check alone. No stronger per-batch signal (an album id, a batch
- * index) has been observed in the wild to discriminate on instead.
- *
- * Observed batch shape across four albums (60/60/100/150 declared tracks):
- * batch one always caps at 50 items, and the entire remainder arrives as one
- * second batch (e.g. the 150-track album split 50 + 100, not 50 + 50 + 50).
- * This function doesn't assume that shape -- it just gathers however many
- * qualifying batches show up -- but it's worth recording that "always
- * exactly two batches" held in every case tested, up to 150 tracks; larger
- * albums are unverified.
+ * Every `albumUnion.tracksV2` batch for this album. Later batches carry no
+ * `uri` and albums have no `pagingInfo`, so a matching `totalCount` is the
+ * only discriminator the shape offers -- a real filter, but not a guarantee.
+ * See docs/design-notes.md ("Album batches").
  */
 function albumTrackBatches(recorded: Recorded[], id: string): Record<string, unknown>[] {
   const declaredTotal = albumTotalCount(recorded, id)
@@ -288,40 +252,14 @@ function albumTrackBatches(recorded: Recorded[], id: string): Record<string, unk
 }
 
 /**
- * Every track-item across every `tracksV2` batch for this album,
- * deduplicated by `(discNumber, trackNumber)` and returned in that order --
- * the album counterpart of `playlistItemsByIndex`.
+ * Every track-item across every batch, deduplicated by
+ * `(discNumber, trackNumber)` -- Spotify's own absolute position, playing the
+ * role `pagingInfo.offset` plays for a playlist. Keying by position rather
+ * than arrival order collapses an overlapping batch instead of emitting a
+ * duplicate Track.
  *
- * An early pass at this fix searched the recorded shape for something
- * `pagingInfo`-like, found nothing (albums genuinely have no such field),
- * and concluded there was no positional signal at all -- proposing
- * concatenation in arrival order instead. That's wrong: every
- * `tracksV2.items[].track` entry carries its own `discNumber` and
- * `trackNumber`, Spotify's own absolute position for the item, which serves
- * the same role `pagingInfo.offset` serves for a playlist. Keying by that
- * pair -- not arrival order -- is exact rather than inferred,
- * order-independent, and collapses a duplicate/overlapping batch into one
- * entry instead of producing a duplicate `Track`, for the same reasons
- * `playlistItemsByIndex`'s doc comment gives for keying by absolute index.
- *
- * A raw item missing `trackNumber` (a malformed/adversarial recording --
- * every real album item observed carries one) has no genuine position to
- * key by. Rather than collapse into, and get silently overwritten by,
- * whichever other trackNumber-less item happens to key the same, it gets an
- * always-unique fallback key derived from arrival order, so it's still
- * counted and returned -- matching this file's "never throw, never
- * silently drop" rule for malformed input -- just without a defined
- * position relative to the properly-keyed entries.
- *
- * `discNumber` was `1` on every album tested for pagination (four, up to 150
- * tracks) -- flat, effectively single-disc compilations where `trackNumber`
- * ran continuously rather than restarting. A genuine 2-disc album
- * (`78dSB74LrGEdjilKcR3bIW`, Shostakovich's "The Golden Age") confirms why
- * `discNumber` has to be part of the key rather than just a tiebreaker:
- * `trackNumber` restarts at 1 on disc 2 (disc 1 ran 1..17, disc 2 ran 1..22,
- * `discNumber` observed as exactly `{1, 2}`) -- keying by `trackNumber`
- * alone would have collapsed disc 1 track 1 and disc 2 track 1 into a
- * single position and silently dropped one of them.
+ * `discNumber` must be part of the key, not a tiebreaker: `trackNumber`
+ * restarts at 1 on each disc. See docs/design-notes.md ("Album batches").
  */
 function albumItemsByPosition(recorded: Recorded[], id: string): unknown[] {
   const byKey = new Map<string, { sortKey: number; raw: unknown }>()
@@ -340,10 +278,9 @@ function albumItemsByPosition(recorded: Recorded[], id: string): unknown[] {
           raw,
         })
       } else {
-        // No genuine position -- see doc comment above. This sort key is
-        // well above any real (discNumber, trackNumber) pair could produce,
-        // so these entries sort after every properly-keyed one and among
-        // themselves preserve arrival order.
+        // No genuine position. A unique fallback key keeps the item counted
+        // and returned rather than silently overwritten, sorted after every
+        // properly-keyed entry.
         byKey.set(`raw:${idx}`, { sortKey: 1_000_000_000_000 + idx, raw })
       }
     }
@@ -354,23 +291,9 @@ function albumItemsByPosition(recorded: Recorded[], id: string): unknown[] {
 }
 
 /**
- * The number of distinct track positions actually recovered across every
- * `tracksV2` batch for this album -- BEFORE `normalizeAlbum` drops malformed
- * ones (no name, no artists; see `trackFromNode`). Deliberately not the same
- * thing as `normalizeAlbum(...).tracks.length`: a track dropped for being
- * malformed is Task 2's validation rule doing its job (a nameless/
- * artist-less track is useless to a search-query consumer), not a sign that
- * a batch was missed. Completeness is about whether we saw everything
- * Spotify declared, not about how much of what we saw survived validation --
- * compare THIS against `albumTotalCount` to detect the former without being
- * fooled by the latter. Returns `null` only if the entity itself can't be
- * found (mirrors `albumTotalCount`).
- *
- * This is simply the size of `albumItemsByPosition`'s deduplicated result --
- * both it and `normalizeAlbum` build from that single source, so the count
- * and the track list can never disagree about how many items were seen, the
- * same property `playlistItemCount`/`normalizePlaylist` have via
- * `playlistItemsByIndex`.
+ * Distinct track positions recovered, BEFORE `normalizeAlbum` drops malformed
+ * ones. Completeness is about what Spotify declared versus what we saw, not
+ * about what survived validation -- see docs/design-notes.md ("Completeness").
  */
 export function albumItemCount(recorded: Recorded[], id: string): number | null {
   const albumUnion = findAlbumUnion(recorded, id)
@@ -380,11 +303,7 @@ export function albumItemCount(recorded: Recorded[], id: string): number | null 
 
 // --- playlist --------------------------------------------------------------
 
-/**
- * Every `data.playlistV2` recorded, decoys and permission fragments
- * included -- the raw candidate set both `findPlaylistEntity` and
- * `normalizePlaylist`'s page-gathering loop filter from.
- */
+/** Every `data.playlistV2` recorded, decoys and permission fragments included. */
 function playlistCandidates(recorded: Recorded[]): Record<string, unknown>[] {
   return pathfinderData(recorded)
     .map((data) => asRecord(data['playlistV2']))
@@ -392,13 +311,9 @@ function playlistCandidates(recorded: Recorded[]): Record<string, unknown>[] {
 }
 
 /**
- * The one entity-bearing `playlistV2` response: `name` present and `uri`
- * matching the requested id. NOT the first `__typename === "Playlist"` -- a
- * permissions-only fragment for this same playlist, with no name/uri/
- * content, is fired first in every fixture. Factored out so
- * `playlistTotalCount` can read `content.totalCount` off the same response
- * `normalizePlaylist` reads `name`/`owner`/`image` from, rather than
- * re-deriving the discriminator.
+ * The one entity-bearing response: `name` present and `uri` matching the id.
+ * NOT the first `__typename === "Playlist"` -- a permissions-only fragment
+ * for the same playlist fires first in every fixture.
  */
 function findPlaylistEntity(recorded: Recorded[], id: string): Record<string, unknown> | null {
   const targetUri = `spotify:playlist:${id}`
@@ -410,27 +325,13 @@ function findPlaylistEntity(recorded: Recorded[], id: string): Record<string, un
 }
 
 /**
- * Every track-item across every page-bearing response for this playlist,
- * deduplicated by ABSOLUTE list position (`offset + i` within a page's
- * `items` array) and returned in index order -- not simply concatenated
- * page by page. "Page-bearing" means `content.pagingInfo` is present,
- * independent of whether `name`/`uri` are also set (the entity response is
- * itself page one; pages past the first carry no uri, so uri can't be used
- * to find them).
+ * Every track-item across every page-bearing response, deduplicated by
+ * absolute list position (`offset + i`) rather than concatenated. A repeated
+ * or overlapping page -- the likeliest product of a misbehaving scroll --
+ * becomes a harmless overwrite instead of a duplicate Track.
  *
- * Deduplication happens HERE, at the source, rather than being reconstructed
- * from a count derived some other way: a page recorded twice, or two
- * overlapping page windows -- the most plausible product of a misbehaving
- * scroll, which is exactly the failure this whole area of the code exists
- * to catch -- must not merely be miscounted, it must not produce a
- * duplicate `Track` in the list `normalizePlaylist` actually returns either.
- * Keying by absolute index makes a duplicate or overlapping fetch a
- * harmless overwrite (a later write for an index already seen simply
- * replaces it with -- in every real case -- identical data) instead of a
- * second list entry. Both `normalizePlaylist` (which converts each entry to
- * a `Track`) and `playlistItemCount` (which just measures how many distinct
- * positions were covered) build from this single deduplicated source, so
- * there is exactly one place a duplicate/overlap gets resolved, not two.
+ * "Page-bearing" means `pagingInfo` is present; pages past the first carry no
+ * `uri`, so `uri` cannot be used to find them.
  */
 function playlistItemsByIndex(recorded: Recorded[]): unknown[] {
   const byIndex = new Map<number, unknown>()
@@ -487,13 +388,9 @@ export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | 
 }
 
 /**
- * The playlist's declared track count (`content.totalCount`, read off the
- * entity-bearing response). A caller compares this against
- * `playlistItemCount` -- NOT against `normalizePlaylist(...).tracks.length`
- * -- to detect a partial scroll recovery: the exact failure mode that
- * silently truncated a playlist during Task 1, because a truncated playlist
- * still looks like a completely valid one. Returns `null` if the entity
- * itself can't be found, or if `totalCount` is absent/non-numeric.
+ * The playlist's declared track count. Compare against `playlistItemCount`,
+ * never against `normalizePlaylist(...).tracks.length` -- a truncated
+ * playlist looks entirely valid.
  */
 export function playlistTotalCount(recorded: Recorded[], id: string): number | null {
   const entity = findPlaylistEntity(recorded, id)
@@ -503,25 +400,10 @@ export function playlistTotalCount(recorded: Recorded[], id: string): number | n
 }
 
 /**
- * The number of *distinct* track-item positions actually covered across
- * every page-bearing response for this playlist -- BEFORE
- * `normalizePlaylist` drops malformed ones (no name, no artists; see
- * `trackFromNode`). Deliberately not the same thing as
- * `normalizePlaylist(...).tracks.length`: a track dropped for being
- * malformed is Task 2's validation rule doing its job (a nameless/
- * artist-less track is useless to a search-query consumer), not a sign that
- * a page went unfetched. Completeness is about pagination coverage -- did
- * we see everything Spotify declared -- not about how much of what we saw
- * survived validation; compare THIS against `playlistTotalCount` to detect
- * the former without being fooled by the latter.
- *
- * This is simply the size of `playlistItemsByIndex`'s deduplicated-by-index
- * result -- NOT a sum of `items.length` across pages (a duplicated or
- * overlapping page would inflate that past what was actually covered) and
- * NOT a count of distinct track URIs either (a playlist may legitimately
- * contain the same track twice, which URI-distinctness would wrongly flag
- * as missing). Returns `null` only if the entity itself can't be found
- * (mirrors `playlistTotalCount`).
+ * Distinct positions covered, BEFORE `normalizePlaylist` drops malformed ones.
+ * Not a sum of `items.length` (an overlapping page would inflate it) and not a
+ * count of distinct URIs (a playlist may legitimately repeat a track).
+ * See docs/design-notes.md ("Completeness").
  */
 export function playlistItemCount(recorded: Recorded[], id: string): number | null {
   const entity = findPlaylistEntity(recorded, id)

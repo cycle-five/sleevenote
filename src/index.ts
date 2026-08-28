@@ -13,19 +13,12 @@ export type ShutdownDeps = {
 }
 
 /**
- * Stateless service, but this process still holds two live resources that do
- * NOT tolerate being torn down mid-request: the browser pool and the Redis
- * connection. `pool.close()` in particular is a HARD shutdown -- it
- * force-closes contexts that still have outstanding leases and does not wait
- * for in-flight work (see Task 4's report). So this order is not arbitrary:
- * close the HTTP server first and let Fastify drain requests already in
- * flight, THEN close the pool those requests were using, THEN close the
- * store nothing needs anymore. Closing the pool first would kill requests
- * mid-extraction.
+ * The order is load-bearing. `pool.close()` is a hard shutdown that
+ * force-closes contexts with outstanding leases, so drain HTTP first, then
+ * close the pool those requests were using, then the store nothing needs.
+ * Closing the pool first kills requests mid-extraction.
  *
- * Pulled out of `main()` and exported so the ordering itself -- not just
- * `main()`'s wiring -- is directly testable with fakes recording call order,
- * no real socket or signal simulation needed. See tests/index.test.ts.
+ * Exported so the ordering itself is testable with fakes recording call order.
  */
 export async function shutdownSequence(deps: ShutdownDeps): Promise<void> {
   await deps.app.close()
@@ -35,8 +28,6 @@ export async function shutdownSequence(deps: ShutdownDeps): Promise<void> {
 
 async function main(): Promise<void> {
   const version = readVersion()
-  // Set once, at startup: this is what lets an operator ask a *running*
-  // instance which build it is, instead of inferring it from a deploy log.
   buildInfo.set({ version }, 1)
 
   const cfg = loadConfig(process.env)
@@ -70,11 +61,9 @@ async function main(): Promise<void> {
   })
 }
 
-// Only run the real service when this module is the process entry point
-// (`node dist/src/index.js`), not when it's imported -- e.g. by
-// tests/index.test.ts importing `shutdownSequence` above. Without this
-// guard, importing this module for its one testable export would also try
-// to load real config, connect to Redis, and launch a real browser.
+// Only run when this module IS the entry point. Without the guard, importing
+// `shutdownSequence` for a test would also connect to Redis and launch a
+// browser.
 const isEntryPoint = import.meta.url === `file://${process.argv[1]}`
 if (isEntryPoint) {
   main().catch((err: unknown) => {
