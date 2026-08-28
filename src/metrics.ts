@@ -1,12 +1,12 @@
-import { Registry, Counter, Histogram, Gauge } from 'prom-client'
+import { Registry, Counter, Histogram, Gauge } from '@prometheus-io/client'
 
 /**
  * One registry, module-level. This is the one exception to "no module-level
  * mutable state" the rest of the service holds to (see config.ts/store.ts):
  * metrics counters are inherently process-local -- they describe what THIS
- * instance has done, not shared application state -- and prom-client's own
- * API is built around a long-lived Registry you register collectors into
- * once. Nothing here is read back to make a routing or caching decision; it
+ * instance has done, not shared application state -- and the client
+ * library's own API is built around a long-lived Registry you register
+ * collectors into once. Nothing here is read back to make a routing or caching decision; it
  * only ever flows outward via GET /metrics.
  */
 export const registry = new Registry()
