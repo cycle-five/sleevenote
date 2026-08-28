@@ -88,6 +88,13 @@ copy-pasteable version with fuller comments:
 | `TTL_NEGATIVE` | `600` | how long a confirmed-absent id is negative-cached |
 | `FAILURE_RELAY_TTL` | `5` | how long a failed extraction stays visible to callers already waiting on the same id. Seconds, deliberately: this is a handoff to the cohort already blocked, not a negative cache for errors. Raising it throttles a permanently-broken entity, at the price of a fixed-and-redeployed scraper still serving the old failure until it expires |
 
+### Items that cannot be resolved
+
+A playlist may hold podcast episodes and local files. Episodes are returned as
+tracks, attributed to their show. Local files cannot be -- their Spotify uri
+carries no id -- so `Playlist` and `Album` both report `unresolvedItems`:
+`tracks.length + unresolvedItems` always equals what Spotify listed.
+
 ## Design notes
 
 Why the code is shaped the way it is -- the pagination techniques that failed

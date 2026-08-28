@@ -139,6 +139,46 @@ function trackFromNode(node: unknown, durationField: 'duration' | 'trackDuration
   }
 }
 
+/**
+ * Build a Track from an `Episode` node. A podcast episode carries a real
+ * Spotify id and name; it lacks only an `artists` array, which is the sole
+ * reason `trackFromNode` rejects it. Its show plays that role: for a consumer
+ * turning this into a search query, "Darknet Diaries -- 178: Ubiquiti" is as
+ * resolvable as any song.
+ *
+ * `url` points at /episode/, not /track/ -- the id is an episode id and a
+ * /track/ URL built from it would 404.
+ */
+function trackFromEpisode(node: unknown): Track | null {
+  const rec = asRecord(node)
+  if (!rec) return null
+  if (asString(rec['__typename']) !== 'Episode') return null
+
+  const name = asString(rec['name'])
+  if (!name) return null
+
+  const id = idFromUri(rec['uri'])
+  if (!id) return null
+
+  const podcast = asRecord(rec['podcastV2'])
+  const podcastData = podcast ? asRecord(podcast['data']) : null
+  const showName = podcastData ? asString(podcastData['name']) : null
+  // Held to the same rule as a track with no artists: a bare episode title,
+  // with nothing to attribute it to, is not usefully resolvable.
+  if (!showName) return null
+
+  return {
+    id,
+    type: 'track',
+    name,
+    artists: [{ name: showName, id: podcastData ? idFromUri(podcastData['uri']) : null }],
+    // The show is the collection this belongs to, and carries the artwork.
+    album: { name: showName, id: podcastData ? idFromUri(podcastData['uri']) : null, image: bestImage(rec['coverArt']) },
+    durationMs: durationMs(rec['episodeDuration']),
+    url: `https://open.spotify.com/episode/${id}`,
+  }
+}
+
 // --- track -------------------------------------------------------------
 
 export function normalizeTrack(recorded: Recorded[], id: string): Track | null {
@@ -200,11 +240,13 @@ export function normalizeAlbum(recorded: Recorded[], id: string): Album | null {
   if (!name) return null
 
   const tracks: Track[] = []
+  let unresolvedItems = 0
   for (const raw of albumItemsByPosition(recorded, id)) {
     const rec = asRecord(raw)
     const trackNode = rec ? rec['track'] : null
     const track = trackFromNode(trackNode, 'duration')
     if (track) tracks.push(track)
+    else unresolvedItems++
   }
 
   return {
@@ -215,6 +257,7 @@ export function normalizeAlbum(recorded: Recorded[], id: string): Album | null {
     image: bestImage(albumUnion['coverArt']),
     url: `https://open.spotify.com/album/${id}`,
     tracks,
+    unresolvedItems,
   }
 }
 
@@ -368,12 +411,17 @@ export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | 
   const image = bestImage(firstImage)
 
   const tracks: Track[] = []
+  let unresolvedItems = 0
   for (const raw of playlistItemsByIndex(recorded)) {
     const rec = asRecord(raw)
     const itemV2 = rec ? asRecord(rec['itemV2']) : null
-    const trackNode = itemV2 ? itemV2['data'] : null
-    const track = trackFromNode(trackNode, 'trackDuration')
+    const node = itemV2 ? itemV2['data'] : null
+    // A playlist holds more than Tracks. Episodes resolve via their show; a
+    // LocalTrack cannot resolve at all (its uri carries no id) and is what
+    // `unresolvedItems` mostly counts. See docs/design-notes.md.
+    const track = trackFromNode(node, 'trackDuration') ?? trackFromEpisode(node)
     if (track) tracks.push(track)
+    else unresolvedItems++
   }
 
   return {
@@ -384,6 +432,7 @@ export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | 
     image,
     url: `https://open.spotify.com/playlist/${id}`,
     tracks,
+    unresolvedItems,
   }
 }
 

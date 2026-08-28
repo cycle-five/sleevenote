@@ -115,7 +115,7 @@ tracks are unverified.
 ## Non-Track playlist items
 
 Every fixture except `playlist-mixed` is Spotify editorial content, which is
-all `Track`s. A real user's playlist is not. It can hold at least three kinds:
+all `Track`s. A real user's playlist is not. It holds at least three kinds:
 
 | `itemV2.__typename` | `data.__typename` | Has `artists`? | id in `uri`? | Duration field |
 |---|---|---|---|---|
@@ -123,41 +123,47 @@ all `Track`s. A real user's playlist is not. It can hold at least three kinds:
 | `EpisodeOrChapterResponseWrapper` | `Episode` | **no** | **yes** | `episodeDuration` |
 | `LocalTrackResponseWrapper` | `LocalTrack` | **no** | **no** | `localTrackDuration` |
 
-`trackFromNode` requires a name, an id parsed from `uri`, and at least one
-artist. Both non-Track kinds fail that, so a playlist of one song, one podcast
-episode and one local file currently normalizes to **one track**.
+### Episodes are admitted; local files cannot be
 
-### The two are dropped for different reasons
+An `Episode` lacks only an `artists` array — it has a real id, a real name,
+and its show at `podcastV2.data.name`. `trackFromEpisode` uses the show as
+both artist and album, so "Darknet Diaries — 178: Ubiquiti" reaches a
+consumer as a resolvable query. Its `url` points at `/episode/`, not
+`/track/`: the id is an episode id, and a `/track/` URL built from it 404s.
 
-**A `LocalTrack` genuinely has no Spotify identity.** Its uri is
-`spotify:local:::<name>:<seconds>` — the id position is empty, so
-`idFromUri` correctly returns null. It is a file on the user's own machine.
+A `LocalTrack` genuinely has no Spotify identity. Its uri is
+`spotify:local:<artist>:<album>:<title>:<seconds>` and **the id position is
+empty**, so `idFromUri` correctly returns null. There is nothing to resolve.
 
-**An `Episode` is dropped by choice, not by constraint.** It has a real uri
-(`spotify:episode:6CQAC1k7sUVk8FQsXABlRU`), a real name, and its show name at
-`podcastV2.data.name`. It is dropped only because it carries no `artists`
-array. For a consumer resolving Spotify metadata into a search query,
-"Darknet Diaries — 178: Ubiquiti" is every bit as resolvable as a song.
+Worth recording, because it defeats the obvious workaround: on the account
+tested, the artist and album positions were empty too —
+`spotify:local:::Ezra+Pound+%283%29+Poems:141`, with `artistName: ""` and
+`albumName: ""` — even for a file whose owner had tagged it. The web player
+does not appear to carry local-file metadata, so a local track's *name* is
+generally all there is to work with.
 
-### Completeness is not affected
+### `unresolvedItems`
 
-`playlistItemCount` counts raw items seen, not tracks that survived
-validation — so this playlist reports 3 seen against 3 declared and passes.
+`Playlist` and `Album` both carry `unresolvedItems`: how many items Spotify
+listed that could not be represented as a `Track`.
+
+Without it the drop is silent, and a consumer cannot tell a two-track playlist
+from a four-item one it could only half resolve — the same shape of silence
+this service exists to remove. `tracks.length + unresolvedItems` always equals
+the item count seen.
+
+`Album` carries it for symmetry and because the same thing can happen there:
+`normalize.ts` drops any item with no name or no artists.
+
+### Completeness is measured separately
+
+`playlistItemCount` counts raw items seen, not tracks that survived — so this
+playlist reports 4 seen against 4 declared and passes.
 
 This is exactly why that distinction exists. Were completeness measured on
 `tracks.length`, any playlist containing a podcast or a local file would raise
 `ExtractionIncompleteError` on every request and, because that error is never
 cached, **fail forever**.
-
-### The open question
-
-The drop is currently *silent*: the response carries one track and nothing
-indicates that two further items existed and were deliberately not
-represented. A consumer cannot tell "a playlist with one song" from "a
-playlist with three items, two unrepresentable".
-
-That is the same shape of silence this service exists to remove, so it is
-worth an explicit decision rather than an accident. Unresolved.
 
 ## The failure relay
 

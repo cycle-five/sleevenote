@@ -2981,15 +2981,20 @@
     }
   },
   {
-    "url": "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=675006&totpServer=675006&totpVer=61",
+    "url": "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=941110&totpServer=941110&totpVer=61",
     "status": 200,
     "body": {
       "clientId": "d8a5ed958d274c2e8ee717e6a4b0971d",
-      "accessToken": "BQDAysBVSVoOuiUC1pPM1KUfHEFsfB118Zk8i2BGAbF2rsXlL4TU5OXC4dozppyFBTqaBqJlOj0YGv94eYiY8j_CSr6mU6XxlbTPxsPdrsn1U7EmKG52SqwQPkJIirTE4_LzdF16lvLN",
-      "accessTokenExpirationTimestampMs": 1787920956452,
+      "accessToken": "BQBTucSwPcZQrjmoFeVvu3IfvM8Kz1MX82jTNLUJBoZSddBvFzJ80c49TJntKaLxvRSDjnJji1bMa7wa_Pby-W835RpaDjitfJPqZQYsNeX8A22Ip3BxvX8SaB9-prYepuYyUNs9WEmP",
+      "accessTokenExpirationTimestampMs": 1787924461655,
       "isAnonymous": true,
       "_notes": "Usage of this endpoint is not permitted under the Spotify Developer Terms and Developer Policy, and applicable law"
     }
+  },
+  {
+    "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
+    "status": 200,
+    "body": {}
   },
   {
     "url": "https://apresolve.spotify.com/?type=dealer-g2&type=spclient",
@@ -2998,14 +3003,14 @@
       "dealer-g2": [
         "gue1-dealer.g2.spotify.com:443",
         "guc3-dealer.g2.spotify.com:443",
-        "gae2-dealer.g2.spotify.com:443",
-        "gew1-dealer.g2.spotify.com:443"
+        "gew1-dealer.g2.spotify.com:443",
+        "gew4-dealer.g2.spotify.com:443"
       ],
       "spclient": [
         "gue1-spclient.spotify.com:443",
         "guc3-spclient.spotify.com:443",
-        "gae2-spclient.spotify.com:443",
-        "gew1-spclient.spotify.com:443"
+        "gew1-spclient.spotify.com:443",
+        "gew4-spclient.spotify.com:443"
       ]
     }
   },
@@ -3015,15 +3020,15 @@
     "body": {
       "dealer-g2": [
         "gue1-dealer.g2.spotify.com:443",
-        "guc3-dealer.g2.spotify.com:443",
         "gae2-dealer.g2.spotify.com:443",
-        "gew1-dealer.g2.spotify.com:443"
+        "gew1-dealer.g2.spotify.com:443",
+        "gew4-dealer.g2.spotify.com:443"
       ],
       "spclient": [
         "gue1-spclient.spotify.com:443",
-        "guc3-spclient.spotify.com:443",
         "gae2-spclient.spotify.com:443",
-        "gew1-spclient.spotify.com:443"
+        "gew1-spclient.spotify.com:443",
+        "gew4-spclient.spotify.com:443"
       ]
     }
   },
@@ -3033,7 +3038,7 @@
     "body": {
       "response_type": "RESPONSE_GRANTED_TOKEN_RESPONSE",
       "granted_token": {
-        "token": "AAGq5FkB/Nu35bWUMEqbDkdX6FrVVG13qYLHlqyGHdW8416MIm178F+82jhyX2+mTitgls0WDVlmJyvnOh1jVZEykHzbuwbhEU82ce5dGL7OoQ6mXAqN5xZ5D4rvX4qQc2c+ZdmvXkEtusoLp3er8PiG253u4IUtjQXXc4i2gtBG1KTtzxTp8PRcjsPXN4+rUrPYQrevpKdYVNxcze60Wo9eHleYSUzLagooH9+6ohVqVnnDzAfpNnx4qEGw62HllDPqyw45SfhfhSlC+BiqQ2Ak1i51+4uORFHSnvip4xZLP9oCVoaiuJ3jrBKH6FoUBrNEKhavEy53VH+1AGRRV2zxV+5JBK26OFtWqOFoa9uBZe7w4igOSqkqI+5DceNzkTtkTRYwKzv78eGoNzoAhpmW+c0wJA==",
+        "token": "AAGWKK4RyZPxy0Vc7sCq/KTKCjtRudiEn+8t9k+TgOeiv0rx1Lc4rySGO5Uz/hE+mr1yxV/YwvMD2aUn5PxHCp9RIhoqlJkU6LaTp6SsP2V92cyPNWcjDx67Ofr8bGXBPoriy4n7Wh5obSI8lnfBU7YcUPepU8kYiPa0MxpojNEGkJi8aEPxrQ4MbqUrGwiPSiJZboAUbA3M0rSS1YnnsvylupmWuBWFQXVQ28tbCr56akcli/SMsbL2wYOZuuFN0VazUkN5scktafX+0XVVBToGoUrcM/Yun2I9+slj986gGNOkOFpGhuvA9wbq/oTZ3jgVHdqwegKlb/4CMEK5uwZ7QCfM+UllXw5vLKZbfjrAsSaGNuMZgOjT8LvKCeudEYT0lY1P2/Mnkg+6ijhw4kL/aJ961Q==",
         "expires_after_seconds": 1216800,
         "refresh_after_seconds": 1209600,
         "domains": [
@@ -3048,17 +3053,12 @@
     }
   },
   {
-    "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
-    "status": 200,
-    "body": {}
-  },
-  {
     "url": "https://gue1-spclient.spotify.com/remote-config-resolver/v3/unauth/configuration",
     "status": 200,
     "body": {
       "configuration": {
-        "configurationAssignmentId": "c04463b9-748f-c596-df4b-42b0fe132d61:0",
-        "fetchTimeMillis": "1787920137482",
+        "configurationAssignmentId": "849da5c3-722f-c821-acb9-c5f044cdcebd:0",
+        "fetchTimeMillis": "1787921650309",
         "assignedValues": [
           {
             "propertyId": {
@@ -3103,7 +3103,7 @@
             }
           }
         ],
-        "policySnapshotId": "500553"
+        "policySnapshotId": "500597"
       }
     }
   },
@@ -3113,15 +3113,15 @@
     "body": {
       "dealer-g2": [
         "gue1-dealer.g2.spotify.com:443",
-        "guc3-dealer.g2.spotify.com:443",
         "gae2-dealer.g2.spotify.com:443",
-        "gew1-dealer.g2.spotify.com:443"
+        "gew1-dealer.g2.spotify.com:443",
+        "gew4-dealer.g2.spotify.com:443"
       ],
       "spclient": [
         "gue1-spclient.spotify.com:443",
-        "guc3-spclient.spotify.com:443",
         "gae2-spclient.spotify.com:443",
-        "gew1-spclient.spotify.com:443"
+        "gew1-spclient.spotify.com:443",
+        "gew4-spclient.spotify.com:443"
       ]
     }
   },
@@ -3141,25 +3141,6 @@
     "url": "https://o22381.ingest.sentry.io/api/114855/envelope/?sentry_version=7&sentry_key=de32132fc06e4b28965ecf25332c3a25&sentry_client=sentry.javascript.react%2F10.63.0",
     "status": 200,
     "body": {}
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
-  },
-  {
-    "url": "https://spclient.wg.spotify.com/library-import/v1/eligible",
-    "status": 200,
-    "body": {}
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
   },
   {
     "url": "https://cdn.cookielaw.org/consent/50da44be-0564-43df-b139-329aedcf267b/50da44be-0564-43df-b139-329aedcf267b.json",
@@ -3771,25 +3752,6 @@
     }
   },
   {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
-    }
-  },
-  {
-    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
-    "status": 200,
-    "body": {
-      "data": {
-        "playlistV2": {
-          "__typename": "NotFound",
-          "message": "Object with uri 'spotify:playlist:37i9dQZF1EYkqdzj48dyYq' not found"
-        }
-      }
-    }
-  },
-  {
     "url": "https://geolocation.onetrust.com/cookieconsentpub/v1/geo/location",
     "status": 200,
     "body": {
@@ -3800,51 +3762,9 @@
     }
   },
   {
-    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
+    "url": "https://spclient.wg.spotify.com/library-import/v1/eligible",
     "status": 200,
-    "body": {
-      "data": {
-        "playlistV2": {
-          "__typename": "Playlist",
-          "basePermission": "VIEWER",
-          "currentUserCapabilities": {
-            "canAdministratePermissions": false,
-            "canCancelMembership": false,
-            "canEditItems": false,
-            "canEditMetadata": false,
-            "canView": true,
-            "grantableLevel": []
-          },
-          "members": {
-            "items": [
-              {
-                "isOwner": true,
-                "permissionLevel": "CONTRIBUTOR",
-                "user": {
-                  "data": {
-                    "__typename": "User",
-                    "avatar": {
-                      "sources": [
-                        {
-                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1"
-                        },
-                        {
-                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1"
-                        }
-                      ]
-                    },
-                    "name": "Lothrop",
-                    "socialHandle": null,
-                    "uri": "spotify:user:jeff.picard",
-                    "username": "jeff.picard"
-                  }
-                }
-              }
-            ]
-          }
-        }
-      }
-    }
+    "body": {}
   },
   {
     "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
@@ -3854,1022 +3774,10 @@
     }
   },
   {
-    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
     "status": 200,
     "body": {
-      "data": {
-        "playlistV2": {
-          "__typename": "Playlist",
-          "content": {
-            "__typename": "PlaylistItemsPage",
-            "items": [
-              {
-                "addedAt": {
-                  "isoString": "2026-08-28T12:20:47Z"
-                },
-                "addedBy": {
-                  "data": {
-                    "__typename": "User",
-                    "avatar": {
-                      "sources": [
-                        {
-                          "height": 64,
-                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
-                          "width": 64
-                        },
-                        {
-                          "height": 300,
-                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
-                          "width": 300
-                        }
-                      ]
-                    },
-                    "name": "Lothrop",
-                    "socialHandle": null,
-                    "uri": "spotify:user:jeff.picard",
-                    "username": "jeff.picard"
-                  }
-                },
-                "attributes": [],
-                "itemV2": {
-                  "__typename": "TrackResponseWrapper",
-                  "data": {
-                    "__typename": "Track",
-                    "albumOfTrack": {
-                      "artists": {
-                        "items": [
-                          {
-                            "profile": {
-                              "name": "DjCorny"
-                            },
-                            "uri": "spotify:artist:1Mn8sRIsjNc5mBwGbWtBfU"
-                          }
-                        ]
-                      },
-                      "coverArt": {
-                        "sources": [
-                          {
-                            "height": 300,
-                            "url": "https://i.scdn.co/image/ab67616d00001e02129a2d62f242fdc175c9131c",
-                            "width": 300
-                          },
-                          {
-                            "height": 64,
-                            "url": "https://i.scdn.co/image/ab67616d00004851129a2d62f242fdc175c9131c",
-                            "width": 64
-                          },
-                          {
-                            "height": 640,
-                            "url": "https://i.scdn.co/image/ab67616d0000b273129a2d62f242fdc175c9131c",
-                            "width": 640
-                          }
-                        ]
-                      },
-                      "date": {
-                        "isoString": "2023-01-30T00:00:00Z",
-                        "precision": "DAY"
-                      },
-                      "name": "Oh Shit I'm Feeling It",
-                      "uri": "spotify:album:1PPuswNaTZCwtBNuoo5m3q"
-                    },
-                    "artists": {
-                      "items": [
-                        {
-                          "profile": {
-                            "name": "DjCorny"
-                          },
-                          "uri": "spotify:artist:1Mn8sRIsjNc5mBwGbWtBfU"
-                        }
-                      ]
-                    },
-                    "associationsV3": {
-                      "audioAssociations": {
-                        "__typename": "TrackAudioAssociationPage",
-                        "items": []
-                      },
-                      "videoAssociations": {
-                        "totalCount": 0
-                      }
-                    },
-                    "contentRating": {
-                      "label": "EXPLICIT"
-                    },
-                    "discNumber": 1,
-                    "trackDuration": {
-                      "totalMilliseconds": 215484
-                    },
-                    "mediaType": "AUDIO",
-                    "name": "Oh Shit I'm Feeling It",
-                    "playability": {
-                      "playable": true,
-                      "reason": "PLAYABLE"
-                    },
-                    "playcount": "2768556",
-                    "trackNumber": 1,
-                    "uri": "spotify:track:2VG79EDgLOcGhWiEZvlmKH"
-                  }
-                },
-                "itemV3": {
-                  "__typename": "EntityResponseWrapper",
-                  "data": {
-                    "__typename": "Entity",
-                    "consumptionExperienceTrait": {
-                      "__typename": "ConsumptionExperienceTrait",
-                      "contentRatings": [
-                        "CONTENT_RATING_EXPLICIT"
-                      ],
-                      "duration": {
-                        "nanoSeconds": 0,
-                        "seconds": 215
-                      },
-                      "formats": [
-                        "FORMAT_AUDIO",
-                        "FORMAT_LOSSLESS"
-                      ]
-                    },
-                    "identityTrait": {
-                      "__typename": "IdentityTrait",
-                      "contentHierarchyParent": {
-                        "__typename": "Entity",
-                        "identityTrait": {
-                          "__typename": "IdentityTrait",
-                          "name": "Oh Shit I'm Feeling It"
-                        },
-                        "publishingMetadataTrait": {
-                          "__typename": "PublishingMetadataTrait",
-                          "firstPublishedAt": {
-                            "isoString": "2023-01-30",
-                            "precision": "DAY"
-                          }
-                        },
-                        "uri": "spotify:album:1PPuswNaTZCwtBNuoo5m3q"
-                      },
-                      "contributors": {
-                        "items": [
-                          {
-                            "name": "DjCorny",
-                            "uri": "spotify:artist:1Mn8sRIsjNc5mBwGbWtBfU"
-                          }
-                        ],
-                        "totalCount": 1
-                      },
-                      "description": "",
-                      "name": "Oh Shit I'm Feeling It",
-                      "type": "Song"
-                    },
-                    "playability": {
-                      "playable": true,
-                      "reason": "PLAYABLE"
-                    },
-                    "uri": "spotify:track:2VG79EDgLOcGhWiEZvlmKH",
-                    "visualIdentityTrait": {
-                      "__typename": "VisualIdentityTrait",
-                      "sixteenByNineCoverImage": null,
-                      "squareCoverImage": {
-                        "extractedColorSet": {
-                          "encoreBaseSetTextColor": {
-                            "alpha": 255,
-                            "blue": 205,
-                            "green": 179,
-                            "red": 205
-                          },
-                          "highContrast": {
-                            "backgroundBase": {
-                              "alpha": 255,
-                              "blue": 98,
-                              "green": 76,
-                              "red": 98
-                            },
-                            "backgroundTintedBase": {
-                              "alpha": 255,
-                              "blue": 65,
-                              "green": 44,
-                              "red": 64
-                            },
-                            "textBase": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textBrightAccent": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textSubdued": {
-                              "alpha": 255,
-                              "blue": 223,
-                              "green": 197,
-                              "red": 224
-                            }
-                          },
-                          "higherContrast": {
-                            "backgroundBase": {
-                              "alpha": 255,
-                              "blue": 67,
-                              "green": 46,
-                              "red": 67
-                            },
-                            "backgroundTintedBase": {
-                              "alpha": 255,
-                              "blue": 101,
-                              "green": 79,
-                              "red": 101
-                            },
-                            "textBase": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textBrightAccent": {
-                              "alpha": 255,
-                              "blue": 96,
-                              "green": 215,
-                              "red": 30
-                            },
-                            "textSubdued": {
-                              "alpha": 255,
-                              "blue": 223,
-                              "green": 197,
-                              "red": 224
-                            }
-                          },
-                          "minContrast": {
-                            "backgroundBase": {
-                              "alpha": 255,
-                              "blue": 144,
-                              "green": 120,
-                              "red": 144
-                            },
-                            "backgroundTintedBase": {
-                              "alpha": 255,
-                              "blue": 117,
-                              "green": 94,
-                              "red": 117
-                            },
-                            "textBase": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textBrightAccent": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textSubdued": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            }
-                          }
-                        },
-                        "image": {
-                          "data": {
-                            "__typename": "ImageV2",
-                            "sources": [
-                              {
-                                "imageFormat": "WEBP",
-                                "maxHeight": 640,
-                                "maxWidth": 640,
-                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab67616d000075a0129a2d62f242fdc175c9131c"
-                              },
-                              {
-                                "imageFormat": "WEBP",
-                                "maxHeight": 64,
-                                "maxWidth": 64,
-                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab67616d000090d5129a2d62f242fdc175c9131c"
-                              },
-                              {
-                                "imageFormat": "WEBP",
-                                "maxHeight": 300,
-                                "maxWidth": 300,
-                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab67616d0000ab87129a2d62f242fdc175c9131c"
-                              }
-                            ]
-                          }
-                        }
-                      }
-                    }
-                  }
-                },
-                "uid": "3981637c3dd294ed"
-              },
-              {
-                "addedAt": {
-                  "isoString": "2026-08-28T12:20:51Z"
-                },
-                "addedBy": {
-                  "data": {
-                    "__typename": "User",
-                    "avatar": {
-                      "sources": [
-                        {
-                          "height": 64,
-                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
-                          "width": 64
-                        },
-                        {
-                          "height": 300,
-                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
-                          "width": 300
-                        }
-                      ]
-                    },
-                    "name": "Lothrop",
-                    "socialHandle": null,
-                    "uri": "spotify:user:jeff.picard",
-                    "username": "jeff.picard"
-                  }
-                },
-                "attributes": [],
-                "itemV2": {
-                  "__typename": "EpisodeOrChapterResponseWrapper",
-                  "data": {
-                    "__typename": "Episode",
-                    "contentRating": {
-                      "label": "NONE"
-                    },
-                    "contentRatingsV2": null,
-                    "coverArt": {
-                      "sources": [
-                        {
-                          "height": 64,
-                          "url": "https://i.scdn.co/image/ab6765630000f68d9e0df6e852d018dea07465b3",
-                          "width": 64
-                        },
-                        {
-                          "height": 300,
-                          "url": "https://i.scdn.co/image/ab67656300005f1f9e0df6e852d018dea07465b3",
-                          "width": 300
-                        },
-                        {
-                          "height": 640,
-                          "url": "https://i.scdn.co/image/ab6765630000ba8a9e0df6e852d018dea07465b3",
-                          "width": 640
-                        }
-                      ]
-                    },
-                    "description": "Nickolas Sharp worked for Ubiquiti, a company that makes networking equipment. He noticed that there were some security problems at work. He tried to point them out, but didn't feel like he was being listened to enough. What do you do when the company you work for isn't securing their software up to your standards? Well, he thought he needed to teach them a lesson, but in the end, he learned an even bigger lesson.SponsorsThis show is brought to you by Drata. Drata is the trust management platform that uses AI-driven automation to modernize governance, risk, and compliance, helping thousands of businesses stay audit-ready and scale securely. Learn more at drata.com/darknetdiaries.This show is sponsored by Material Security. Your cloud office (think Google Workspace or Microsoft 365) is the core of your business, but it’s often protected by scattered tools and manual fixes. Material is a purpose-built detection and response platform that closes the gaps those point solutions leave behind. From email threats to misconfigurations and account takeovers, Material monitors everything and steps in with real-time fixes to keep your data flowing where it should. Learn more at https://material.security.Support for this show comes from ThreatLocker. ThreatLocker is a Zero Trust Platform that gives organizations control over what can run and what users and devices can access. It combines prevention with real time detection and automated response, helping security teams stop unauthorized activity and quickly contain compromised machines. Learn how ThreatLocker can strengthen your defenses at threatlocker.com/Darknet.View all active sponsors.SourcesFull list of sources on the show page: https://darknetdiaries.com/episode/178/",
-                    "episodeDuration": {
-                      "totalMilliseconds": 2429088
-                    },
-                    "gatedEntityRelations": [
-                      {
-                        "badges": [
-                          {
-                            "displayText": "Fewer ads"
-                          }
-                        ],
-                        "fallbackGatedEntity": null,
-                        "relatedEntity": {
-                          "__typename": "EpisodeResponseWrapper",
-                          "_uri": "spotify:episode:7IWdFu7fQnbbnV9xUkpB7k"
-                        },
-                        "summary": {
-                          "forUserWithAccess": "You have access to fewer ads",
-                          "forUserWithoutAccess": "Fewer ads for subscribers"
-                        }
-                      }
-                    ],
-                    "language": {
-                      "code": "en"
-                    },
-                    "name": "178: Ubiquiti",
-                    "playability": {
-                      "playable": true,
-                      "reason": "PLAYABLE"
-                    },
-                    "playedState": {
-                      "playPositionMilliseconds": 0,
-                      "state": "NOT_STARTED"
-                    },
-                    "podcastV2": {
-                      "data": {
-                        "__typename": "Podcast",
-                        "contentRatingV2": {
-                          "labels": [
-                            "EXPLICIT"
-                          ]
-                        },
-                        "coverArt": {
-                          "sources": [
-                            {
-                              "height": 64,
-                              "url": "https://i.scdn.co/image/ab6765630000f68dd27c58dc12f1c25fb933dd86",
-                              "width": 64
-                            },
-                            {
-                              "height": 300,
-                              "url": "https://i.scdn.co/image/ab67656300005f1fd27c58dc12f1c25fb933dd86",
-                              "width": 300
-                            },
-                            {
-                              "height": 640,
-                              "url": "https://i.scdn.co/image/ab6765630000ba8ad27c58dc12f1c25fb933dd86",
-                              "width": 640
-                            }
-                          ]
-                        },
-                        "mediaType": "AUDIO",
-                        "name": "Darknet Diaries",
-                        "publisher": {
-                          "name": "Jack Rhysider"
-                        },
-                        "uri": "spotify:show:4XPl3uEEL9hvqMkoZrzbx5"
-                      }
-                    },
-                    "releaseDate": {
-                      "isoString": "2026-08-04T07:00:00Z",
-                      "precision": "MINUTE"
-                    },
-                    "restrictions": {
-                      "paywallContent": false
-                    },
-                    "uri": "spotify:episode:6CQAC1k7sUVk8FQsXABlRU",
-                    "visualIdentity": {
-                      "sixteenByNineCoverImage": null,
-                      "squareCoverImage": {
-                        "__typename": "VisualIdentityImage",
-                        "extractedColorSet": {
-                          "encoreBaseSetTextColor": {
-                            "alpha": 255,
-                            "blue": 147,
-                            "green": 162,
-                            "red": 255
-                          },
-                          "highContrast": {
-                            "backgroundBase": {
-                              "alpha": 255,
-                              "blue": 0,
-                              "green": 0,
-                              "red": 159
-                            },
-                            "backgroundTintedBase": {
-                              "alpha": 255,
-                              "blue": 0,
-                              "green": 0,
-                              "red": 97
-                            },
-                            "textBase": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textBrightAccent": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textSubdued": {
-                              "alpha": 255,
-                              "blue": 178,
-                              "green": 190,
-                              "red": 255
-                            }
-                          },
-                          "higherContrast": {
-                            "backgroundBase": {
-                              "alpha": 255,
-                              "blue": 0,
-                              "green": 0,
-                              "red": 101
-                            },
-                            "backgroundTintedBase": {
-                              "alpha": 255,
-                              "blue": 41,
-                              "green": 52,
-                              "red": 147
-                            },
-                            "textBase": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textBrightAccent": {
-                              "alpha": 255,
-                              "blue": 96,
-                              "green": 215,
-                              "red": 30
-                            },
-                            "textSubdued": {
-                              "alpha": 255,
-                              "blue": 178,
-                              "green": 190,
-                              "red": 255
-                            }
-                          },
-                          "minContrast": {
-                            "backgroundBase": {
-                              "alpha": 255,
-                              "blue": 8,
-                              "green": 0,
-                              "red": 248
-                            },
-                            "backgroundTintedBase": {
-                              "alpha": 255,
-                              "blue": 0,
-                              "green": 0,
-                              "red": 198
-                            },
-                            "textBase": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textBrightAccent": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textSubdued": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                },
-                "itemV3": {
-                  "__typename": "EntityResponseWrapper",
-                  "data": {
-                    "__typename": "Entity",
-                    "consumptionExperienceTrait": {
-                      "__typename": "ConsumptionExperienceTrait",
-                      "contentRatings": [],
-                      "duration": {
-                        "nanoSeconds": 88000000,
-                        "seconds": 2429
-                      },
-                      "formats": [
-                        "FORMAT_AUDIO"
-                      ]
-                    },
-                    "identityTrait": {
-                      "__typename": "IdentityTrait",
-                      "contentHierarchyParent": {
-                        "__typename": "Entity",
-                        "identityTrait": {
-                          "__typename": "IdentityTrait",
-                          "name": "Darknet Diaries"
-                        },
-                        "publishingMetadataTrait": {
-                          "__typename": "GenericError"
-                        },
-                        "uri": "spotify:show:4XPl3uEEL9hvqMkoZrzbx5"
-                      },
-                      "contributors": {
-                        "items": [
-                          {
-                            "name": "Nickolas Sharp",
-                            "uri": ""
-                          }
-                        ],
-                        "totalCount": 1
-                      },
-                      "description": "Nickolas Sharp worked for Ubiquiti, a company that makes networking equipment. He noticed that there were some security problems at work. He tried to point them out, but didn't feel like he was being listened to enough. What do you do when the company you work for isn't securing their software up to your standards? Well, he thought he needed to teach them a lesson, but in the end, he learned an even bigger lesson.SponsorsThis show is brought to you by Drata. Drata is the trust management platform that uses AI-driven automation to modernize governance, risk, and compliance, helping thousands of businesses stay audit-ready and scale securely. Learn more at drata.com/darknetdiaries.This show is sponsored by Material Security. Your cloud office (think Google Workspace or Microsoft 365) is the core of your business, but it’s often protected by scattered tools and manual fixes. Material is a purpose-built detection and response platform that closes the gaps those point solutions leave behind. From email threats to misconfigurations and account takeovers, Material monitors everything and steps in with real-time fixes to keep your data flowing where it should. Learn more at https://material.security.Support for this show comes from ThreatLocker. ThreatLocker is a Zero Trust Platform that gives organizations control over what can run and what users and devices can access. It combines prevention with real time detection and automated response, helping security teams stop unauthorized activity and quickly contain compromised machines. Learn how ThreatLocker can strengthen your defenses at threatlocker.com/Darknet.View all active sponsors.SourcesFull list of sources on the show page: https://darknetdiaries.com/episode/178/",
-                      "name": "178: Ubiquiti",
-                      "type": "Episode"
-                    },
-                    "playability": {
-                      "playable": true,
-                      "reason": "PLAYABLE"
-                    },
-                    "uri": "spotify:episode:6CQAC1k7sUVk8FQsXABlRU",
-                    "visualIdentityTrait": {
-                      "__typename": "VisualIdentityTrait",
-                      "sixteenByNineCoverImage": null,
-                      "squareCoverImage": {
-                        "extractedColorSet": {
-                          "encoreBaseSetTextColor": {
-                            "alpha": 255,
-                            "blue": 147,
-                            "green": 162,
-                            "red": 255
-                          },
-                          "highContrast": {
-                            "backgroundBase": {
-                              "alpha": 255,
-                              "blue": 0,
-                              "green": 0,
-                              "red": 159
-                            },
-                            "backgroundTintedBase": {
-                              "alpha": 255,
-                              "blue": 0,
-                              "green": 0,
-                              "red": 97
-                            },
-                            "textBase": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textBrightAccent": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textSubdued": {
-                              "alpha": 255,
-                              "blue": 178,
-                              "green": 190,
-                              "red": 255
-                            }
-                          },
-                          "higherContrast": {
-                            "backgroundBase": {
-                              "alpha": 255,
-                              "blue": 0,
-                              "green": 0,
-                              "red": 101
-                            },
-                            "backgroundTintedBase": {
-                              "alpha": 255,
-                              "blue": 41,
-                              "green": 52,
-                              "red": 147
-                            },
-                            "textBase": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textBrightAccent": {
-                              "alpha": 255,
-                              "blue": 96,
-                              "green": 215,
-                              "red": 30
-                            },
-                            "textSubdued": {
-                              "alpha": 255,
-                              "blue": 178,
-                              "green": 190,
-                              "red": 255
-                            }
-                          },
-                          "minContrast": {
-                            "backgroundBase": {
-                              "alpha": 255,
-                              "blue": 8,
-                              "green": 0,
-                              "red": 248
-                            },
-                            "backgroundTintedBase": {
-                              "alpha": 255,
-                              "blue": 0,
-                              "green": 0,
-                              "red": 198
-                            },
-                            "textBase": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textBrightAccent": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            },
-                            "textSubdued": {
-                              "alpha": 255,
-                              "blue": 255,
-                              "green": 255,
-                              "red": 255
-                            }
-                          }
-                        },
-                        "image": {
-                          "data": {
-                            "__typename": "ImageV2",
-                            "sources": [
-                              {
-                                "imageFormat": "WEBP",
-                                "maxHeight": 64,
-                                "maxWidth": 64,
-                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab6765630000955f9e0df6e852d018dea07465b3"
-                              },
-                              {
-                                "imageFormat": "WEBP",
-                                "maxHeight": 300,
-                                "maxWidth": 300,
-                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab6765630000bdcf9e0df6e852d018dea07465b3"
-                              },
-                              {
-                                "imageFormat": "WEBP",
-                                "maxHeight": 640,
-                                "maxWidth": 640,
-                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab6765630000eeee9e0df6e852d018dea07465b3"
-                              }
-                            ]
-                          }
-                        }
-                      }
-                    }
-                  }
-                },
-                "uid": "d054537f38a3ef70"
-              },
-              {
-                "addedAt": {
-                  "isoString": "2026-08-28T12:25:23Z"
-                },
-                "addedBy": {
-                  "data": {
-                    "__typename": "User",
-                    "avatar": {
-                      "sources": [
-                        {
-                          "height": 64,
-                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
-                          "width": 64
-                        },
-                        {
-                          "height": 300,
-                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
-                          "width": 300
-                        }
-                      ]
-                    },
-                    "name": "Lothrop",
-                    "socialHandle": null,
-                    "uri": "spotify:user:jeff.picard",
-                    "username": "jeff.picard"
-                  }
-                },
-                "attributes": [],
-                "itemV2": {
-                  "__typename": "LocalTrackResponseWrapper",
-                  "data": {
-                    "__typename": "LocalTrack",
-                    "albumName": "",
-                    "artistName": "",
-                    "localTrackDuration": {
-                      "totalMilliseconds": 25000
-                    },
-                    "name": "rudin-real-numbers-stopped-the-greeks-2000-years-earlier",
-                    "uri": "spotify:local:::rudin-real-numbers-stopped-the-greeks-2000-years-earlier:25"
-                  }
-                },
-                "itemV3": {
-                  "__typename": "LocalTrackResponseWrapper"
-                },
-                "uid": "3c2302aefd43fca0"
-              }
-            ],
-            "pagingInfo": {
-              "limit": 25,
-              "offset": 0
-            },
-            "totalCount": 3
-          },
-          "abuseReportingEnabled": true,
-          "attributes": [],
-          "basePermission": "VIEWER",
-          "currentUserCapabilities": {
-            "canAbuseReport": true,
-            "canAdministratePermissions": false,
-            "canCancelMembership": false,
-            "canEditItems": false,
-            "canEditMetadata": false,
-            "canMixPlaylist": false,
-            "canView": true
-          },
-          "description": "Interesting...",
-          "followers": 0,
-          "following": false,
-          "format": "",
-          "images": {
-            "items": [
-              {
-                "sources": [
-                  {
-                    "height": null,
-                    "url": "https://i.scdn.co/image/ab67616d00001e02129a2d62f242fdc175c9131c",
-                    "width": null
-                  }
-                ]
-              }
-            ]
-          },
-          "members": {
-            "items": [
-              {
-                "isOwner": true,
-                "permissionLevel": "CONTRIBUTOR",
-                "user": {
-                  "data": {
-                    "__typename": "User",
-                    "avatar": {
-                      "sources": [
-                        {
-                          "height": 64,
-                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
-                          "width": 64
-                        },
-                        {
-                          "height": 300,
-                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
-                          "width": 300
-                        }
-                      ]
-                    },
-                    "name": "Lothrop",
-                    "socialHandle": null,
-                    "uri": "spotify:user:jeff.picard",
-                    "username": "jeff.picard"
-                  }
-                }
-              }
-            ],
-            "totalCount": 1
-          },
-          "name": "Song, Podcast, Local file",
-          "ownerV2": {
-            "data": {
-              "__typename": "User",
-              "avatar": {
-                "sources": [
-                  {
-                    "height": 64,
-                    "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
-                    "width": 64
-                  },
-                  {
-                    "height": 300,
-                    "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
-                    "width": 300
-                  }
-                ]
-              },
-              "name": "Lothrop",
-              "socialHandle": null,
-              "uri": "spotify:user:jeff.picard",
-              "username": "jeff.picard"
-            }
-          },
-          "revisionId": "AAAABRHztE8IptRm9YTjviXT9OGGQzLj",
-          "sharingInfo": {
-            "shareId": "-QmH6ejhQZWRJ4-Z9NrPFw",
-            "shareUrl": "https://open.spotify.com/playlist/3tlExkExp1aaYcU91Qhp79?si=-QmH6ejhQZWRJ4-Z9NrPFw"
-          },
-          "uri": "spotify:playlist:3tlExkExp1aaYcU91Qhp79",
-          "visualIdentity": {
-            "squareCoverImage": {
-              "__typename": "VisualIdentityImage",
-              "extractedColorSet": {
-                "encoreBaseSetTextColor": {
-                  "alpha": 255,
-                  "blue": 205,
-                  "green": 179,
-                  "red": 205
-                },
-                "highContrast": {
-                  "backgroundBase": {
-                    "alpha": 255,
-                    "blue": 98,
-                    "green": 76,
-                    "red": 98
-                  },
-                  "backgroundTintedBase": {
-                    "alpha": 255,
-                    "blue": 65,
-                    "green": 44,
-                    "red": 64
-                  },
-                  "textBase": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  },
-                  "textBrightAccent": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  },
-                  "textSubdued": {
-                    "alpha": 255,
-                    "blue": 223,
-                    "green": 197,
-                    "red": 224
-                  }
-                },
-                "higherContrast": {
-                  "backgroundBase": {
-                    "alpha": 255,
-                    "blue": 67,
-                    "green": 46,
-                    "red": 67
-                  },
-                  "backgroundTintedBase": {
-                    "alpha": 255,
-                    "blue": 101,
-                    "green": 79,
-                    "red": 101
-                  },
-                  "textBase": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  },
-                  "textBrightAccent": {
-                    "alpha": 255,
-                    "blue": 96,
-                    "green": 215,
-                    "red": 30
-                  },
-                  "textSubdued": {
-                    "alpha": 255,
-                    "blue": 223,
-                    "green": 197,
-                    "red": 224
-                  }
-                },
-                "minContrast": {
-                  "backgroundBase": {
-                    "alpha": 255,
-                    "blue": 144,
-                    "green": 120,
-                    "red": 144
-                  },
-                  "backgroundTintedBase": {
-                    "alpha": 255,
-                    "blue": 117,
-                    "green": 94,
-                    "red": 117
-                  },
-                  "textBase": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  },
-                  "textBrightAccent": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  },
-                  "textSubdued": {
-                    "alpha": 255,
-                    "blue": 255,
-                    "green": 255,
-                    "red": 255
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
-  {
-    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
-    "status": 200,
-    "body": {
-      "data": {
-        "extractedColors": [
-          {
-            "__typename": "ExtractedColors",
-            "colorDark": {
-              "hex": "#867086",
-              "isFallback": false
-            },
-            "colorLight": {
-              "hex": "#907890",
-              "isFallback": false
-            },
-            "colorRaw": {
-              "hex": "#907890",
-              "isFallback": false
-            }
-          }
-        ]
-      }
+      "errors": []
     }
   },
   {
@@ -11495,6 +10403,1119 @@
     }
   },
   {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
+    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
+    "status": 200,
+    "body": {
+      "data": {
+        "playlistV2": {
+          "__typename": "Playlist",
+          "basePermission": "VIEWER",
+          "currentUserCapabilities": {
+            "canAdministratePermissions": false,
+            "canCancelMembership": false,
+            "canEditItems": false,
+            "canEditMetadata": false,
+            "canView": true,
+            "grantableLevel": []
+          },
+          "members": {
+            "items": [
+              {
+                "isOwner": true,
+                "permissionLevel": "CONTRIBUTOR",
+                "user": {
+                  "data": {
+                    "__typename": "User",
+                    "avatar": {
+                      "sources": [
+                        {
+                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1"
+                        },
+                        {
+                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1"
+                        }
+                      ]
+                    },
+                    "name": "Lothrop",
+                    "socialHandle": null,
+                    "uri": "spotify:user:jeff.picard",
+                    "username": "jeff.picard"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
+    "status": 200,
+    "body": {
+      "data": {
+        "playlistV2": {
+          "__typename": "NotFound",
+          "message": "Object with uri 'spotify:playlist:37i9dQZF1EYkqdzj48dyYq' not found"
+        }
+      }
+    }
+  },
+  {
+    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
+    "status": 200,
+    "body": {
+      "data": {
+        "playlistV2": {
+          "__typename": "Playlist",
+          "content": {
+            "__typename": "PlaylistItemsPage",
+            "items": [
+              {
+                "addedAt": {
+                  "isoString": "2026-08-28T12:20:47Z"
+                },
+                "addedBy": {
+                  "data": {
+                    "__typename": "User",
+                    "avatar": {
+                      "sources": [
+                        {
+                          "height": 64,
+                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
+                          "width": 64
+                        },
+                        {
+                          "height": 300,
+                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
+                          "width": 300
+                        }
+                      ]
+                    },
+                    "name": "Lothrop",
+                    "socialHandle": null,
+                    "uri": "spotify:user:jeff.picard",
+                    "username": "jeff.picard"
+                  }
+                },
+                "attributes": [],
+                "itemV2": {
+                  "__typename": "TrackResponseWrapper",
+                  "data": {
+                    "__typename": "Track",
+                    "albumOfTrack": {
+                      "artists": {
+                        "items": [
+                          {
+                            "profile": {
+                              "name": "DjCorny"
+                            },
+                            "uri": "spotify:artist:1Mn8sRIsjNc5mBwGbWtBfU"
+                          }
+                        ]
+                      },
+                      "coverArt": {
+                        "sources": [
+                          {
+                            "height": 300,
+                            "url": "https://i.scdn.co/image/ab67616d00001e02129a2d62f242fdc175c9131c",
+                            "width": 300
+                          },
+                          {
+                            "height": 64,
+                            "url": "https://i.scdn.co/image/ab67616d00004851129a2d62f242fdc175c9131c",
+                            "width": 64
+                          },
+                          {
+                            "height": 640,
+                            "url": "https://i.scdn.co/image/ab67616d0000b273129a2d62f242fdc175c9131c",
+                            "width": 640
+                          }
+                        ]
+                      },
+                      "date": {
+                        "isoString": "2023-01-30T00:00:00Z",
+                        "precision": "DAY"
+                      },
+                      "name": "Oh Shit I'm Feeling It",
+                      "uri": "spotify:album:1PPuswNaTZCwtBNuoo5m3q"
+                    },
+                    "artists": {
+                      "items": [
+                        {
+                          "profile": {
+                            "name": "DjCorny"
+                          },
+                          "uri": "spotify:artist:1Mn8sRIsjNc5mBwGbWtBfU"
+                        }
+                      ]
+                    },
+                    "associationsV3": {
+                      "audioAssociations": {
+                        "__typename": "TrackAudioAssociationPage",
+                        "items": []
+                      },
+                      "videoAssociations": {
+                        "totalCount": 0
+                      }
+                    },
+                    "contentRating": {
+                      "label": "EXPLICIT"
+                    },
+                    "discNumber": 1,
+                    "trackDuration": {
+                      "totalMilliseconds": 215484
+                    },
+                    "mediaType": "AUDIO",
+                    "name": "Oh Shit I'm Feeling It",
+                    "playability": {
+                      "playable": true,
+                      "reason": "PLAYABLE"
+                    },
+                    "playcount": "2768556",
+                    "trackNumber": 1,
+                    "uri": "spotify:track:2VG79EDgLOcGhWiEZvlmKH"
+                  }
+                },
+                "itemV3": {
+                  "__typename": "EntityResponseWrapper",
+                  "data": {
+                    "__typename": "Entity",
+                    "consumptionExperienceTrait": {
+                      "__typename": "ConsumptionExperienceTrait",
+                      "contentRatings": [
+                        "CONTENT_RATING_EXPLICIT"
+                      ],
+                      "duration": {
+                        "nanoSeconds": 0,
+                        "seconds": 215
+                      },
+                      "formats": [
+                        "FORMAT_AUDIO",
+                        "FORMAT_LOSSLESS"
+                      ]
+                    },
+                    "identityTrait": {
+                      "__typename": "IdentityTrait",
+                      "contentHierarchyParent": {
+                        "__typename": "Entity",
+                        "identityTrait": {
+                          "__typename": "IdentityTrait",
+                          "name": "Oh Shit I'm Feeling It"
+                        },
+                        "publishingMetadataTrait": {
+                          "__typename": "PublishingMetadataTrait",
+                          "firstPublishedAt": {
+                            "isoString": "2023-01-30",
+                            "precision": "DAY"
+                          }
+                        },
+                        "uri": "spotify:album:1PPuswNaTZCwtBNuoo5m3q"
+                      },
+                      "contributors": {
+                        "items": [
+                          {
+                            "name": "DjCorny",
+                            "uri": "spotify:artist:1Mn8sRIsjNc5mBwGbWtBfU"
+                          }
+                        ],
+                        "totalCount": 1
+                      },
+                      "description": "",
+                      "name": "Oh Shit I'm Feeling It",
+                      "type": "Song"
+                    },
+                    "playability": {
+                      "playable": true,
+                      "reason": "PLAYABLE"
+                    },
+                    "uri": "spotify:track:2VG79EDgLOcGhWiEZvlmKH",
+                    "visualIdentityTrait": {
+                      "__typename": "VisualIdentityTrait",
+                      "sixteenByNineCoverImage": null,
+                      "squareCoverImage": {
+                        "extractedColorSet": {
+                          "encoreBaseSetTextColor": {
+                            "alpha": 255,
+                            "blue": 205,
+                            "green": 179,
+                            "red": 205
+                          },
+                          "highContrast": {
+                            "backgroundBase": {
+                              "alpha": 255,
+                              "blue": 98,
+                              "green": 76,
+                              "red": 98
+                            },
+                            "backgroundTintedBase": {
+                              "alpha": 255,
+                              "blue": 65,
+                              "green": 44,
+                              "red": 64
+                            },
+                            "textBase": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textBrightAccent": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textSubdued": {
+                              "alpha": 255,
+                              "blue": 223,
+                              "green": 197,
+                              "red": 224
+                            }
+                          },
+                          "higherContrast": {
+                            "backgroundBase": {
+                              "alpha": 255,
+                              "blue": 67,
+                              "green": 46,
+                              "red": 67
+                            },
+                            "backgroundTintedBase": {
+                              "alpha": 255,
+                              "blue": 101,
+                              "green": 79,
+                              "red": 101
+                            },
+                            "textBase": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textBrightAccent": {
+                              "alpha": 255,
+                              "blue": 96,
+                              "green": 215,
+                              "red": 30
+                            },
+                            "textSubdued": {
+                              "alpha": 255,
+                              "blue": 223,
+                              "green": 197,
+                              "red": 224
+                            }
+                          },
+                          "minContrast": {
+                            "backgroundBase": {
+                              "alpha": 255,
+                              "blue": 144,
+                              "green": 120,
+                              "red": 144
+                            },
+                            "backgroundTintedBase": {
+                              "alpha": 255,
+                              "blue": 117,
+                              "green": 94,
+                              "red": 117
+                            },
+                            "textBase": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textBrightAccent": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textSubdued": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            }
+                          }
+                        },
+                        "image": {
+                          "data": {
+                            "__typename": "ImageV2",
+                            "sources": [
+                              {
+                                "imageFormat": "WEBP",
+                                "maxHeight": 640,
+                                "maxWidth": 640,
+                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab67616d000075a0129a2d62f242fdc175c9131c"
+                              },
+                              {
+                                "imageFormat": "WEBP",
+                                "maxHeight": 64,
+                                "maxWidth": 64,
+                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab67616d000090d5129a2d62f242fdc175c9131c"
+                              },
+                              {
+                                "imageFormat": "WEBP",
+                                "maxHeight": 300,
+                                "maxWidth": 300,
+                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab67616d0000ab87129a2d62f242fdc175c9131c"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "uid": "3981637c3dd294ed"
+              },
+              {
+                "addedAt": {
+                  "isoString": "2026-08-28T12:20:51Z"
+                },
+                "addedBy": {
+                  "data": {
+                    "__typename": "User",
+                    "avatar": {
+                      "sources": [
+                        {
+                          "height": 64,
+                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
+                          "width": 64
+                        },
+                        {
+                          "height": 300,
+                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
+                          "width": 300
+                        }
+                      ]
+                    },
+                    "name": "Lothrop",
+                    "socialHandle": null,
+                    "uri": "spotify:user:jeff.picard",
+                    "username": "jeff.picard"
+                  }
+                },
+                "attributes": [],
+                "itemV2": {
+                  "__typename": "EpisodeOrChapterResponseWrapper",
+                  "data": {
+                    "__typename": "Episode",
+                    "contentRating": {
+                      "label": "NONE"
+                    },
+                    "contentRatingsV2": null,
+                    "coverArt": {
+                      "sources": [
+                        {
+                          "height": 64,
+                          "url": "https://i.scdn.co/image/ab6765630000f68d9e0df6e852d018dea07465b3",
+                          "width": 64
+                        },
+                        {
+                          "height": 300,
+                          "url": "https://i.scdn.co/image/ab67656300005f1f9e0df6e852d018dea07465b3",
+                          "width": 300
+                        },
+                        {
+                          "height": 640,
+                          "url": "https://i.scdn.co/image/ab6765630000ba8a9e0df6e852d018dea07465b3",
+                          "width": 640
+                        }
+                      ]
+                    },
+                    "description": "Nickolas Sharp worked for Ubiquiti, a company that makes networking equipment. He noticed that there were some security problems at work. He tried to point them out, but didn't feel like he was being listened to enough. What do you do when the company you work for isn't securing their software up to your standards? Well, he thought he needed to teach them a lesson, but in the end, he learned an even bigger lesson.SponsorsThis show is brought to you by Drata. Drata is the trust management platform that uses AI-driven automation to modernize governance, risk, and compliance, helping thousands of businesses stay audit-ready and scale securely. Learn more at drata.com/darknetdiaries.This show is sponsored by Material Security. Your cloud office (think Google Workspace or Microsoft 365) is the core of your business, but it’s often protected by scattered tools and manual fixes. Material is a purpose-built detection and response platform that closes the gaps those point solutions leave behind. From email threats to misconfigurations and account takeovers, Material monitors everything and steps in with real-time fixes to keep your data flowing where it should. Learn more at https://material.security.Support for this show comes from ThreatLocker. ThreatLocker is a Zero Trust Platform that gives organizations control over what can run and what users and devices can access. It combines prevention with real time detection and automated response, helping security teams stop unauthorized activity and quickly contain compromised machines. Learn how ThreatLocker can strengthen your defenses at threatlocker.com/Darknet.View all active sponsors.SourcesFull list of sources on the show page: https://darknetdiaries.com/episode/178/",
+                    "episodeDuration": {
+                      "totalMilliseconds": 2429088
+                    },
+                    "gatedEntityRelations": [
+                      {
+                        "badges": [
+                          {
+                            "displayText": "Fewer ads"
+                          }
+                        ],
+                        "fallbackGatedEntity": null,
+                        "relatedEntity": {
+                          "__typename": "EpisodeResponseWrapper",
+                          "_uri": "spotify:episode:7IWdFu7fQnbbnV9xUkpB7k"
+                        },
+                        "summary": {
+                          "forUserWithAccess": "You have access to fewer ads",
+                          "forUserWithoutAccess": "Fewer ads for subscribers"
+                        }
+                      }
+                    ],
+                    "language": {
+                      "code": "en"
+                    },
+                    "name": "178: Ubiquiti",
+                    "playability": {
+                      "playable": true,
+                      "reason": "PLAYABLE"
+                    },
+                    "playedState": {
+                      "playPositionMilliseconds": 0,
+                      "state": "NOT_STARTED"
+                    },
+                    "podcastV2": {
+                      "data": {
+                        "__typename": "Podcast",
+                        "contentRatingV2": {
+                          "labels": [
+                            "EXPLICIT"
+                          ]
+                        },
+                        "coverArt": {
+                          "sources": [
+                            {
+                              "height": 64,
+                              "url": "https://i.scdn.co/image/ab6765630000f68dd27c58dc12f1c25fb933dd86",
+                              "width": 64
+                            },
+                            {
+                              "height": 300,
+                              "url": "https://i.scdn.co/image/ab67656300005f1fd27c58dc12f1c25fb933dd86",
+                              "width": 300
+                            },
+                            {
+                              "height": 640,
+                              "url": "https://i.scdn.co/image/ab6765630000ba8ad27c58dc12f1c25fb933dd86",
+                              "width": 640
+                            }
+                          ]
+                        },
+                        "mediaType": "AUDIO",
+                        "name": "Darknet Diaries",
+                        "publisher": {
+                          "name": "Jack Rhysider"
+                        },
+                        "uri": "spotify:show:4XPl3uEEL9hvqMkoZrzbx5"
+                      }
+                    },
+                    "releaseDate": {
+                      "isoString": "2026-08-04T07:00:00Z",
+                      "precision": "MINUTE"
+                    },
+                    "restrictions": {
+                      "paywallContent": false
+                    },
+                    "uri": "spotify:episode:6CQAC1k7sUVk8FQsXABlRU",
+                    "visualIdentity": {
+                      "sixteenByNineCoverImage": null,
+                      "squareCoverImage": {
+                        "__typename": "VisualIdentityImage",
+                        "extractedColorSet": {
+                          "encoreBaseSetTextColor": {
+                            "alpha": 255,
+                            "blue": 147,
+                            "green": 162,
+                            "red": 255
+                          },
+                          "highContrast": {
+                            "backgroundBase": {
+                              "alpha": 255,
+                              "blue": 0,
+                              "green": 0,
+                              "red": 159
+                            },
+                            "backgroundTintedBase": {
+                              "alpha": 255,
+                              "blue": 0,
+                              "green": 0,
+                              "red": 97
+                            },
+                            "textBase": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textBrightAccent": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textSubdued": {
+                              "alpha": 255,
+                              "blue": 178,
+                              "green": 190,
+                              "red": 255
+                            }
+                          },
+                          "higherContrast": {
+                            "backgroundBase": {
+                              "alpha": 255,
+                              "blue": 0,
+                              "green": 0,
+                              "red": 101
+                            },
+                            "backgroundTintedBase": {
+                              "alpha": 255,
+                              "blue": 41,
+                              "green": 52,
+                              "red": 147
+                            },
+                            "textBase": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textBrightAccent": {
+                              "alpha": 255,
+                              "blue": 96,
+                              "green": 215,
+                              "red": 30
+                            },
+                            "textSubdued": {
+                              "alpha": 255,
+                              "blue": 178,
+                              "green": 190,
+                              "red": 255
+                            }
+                          },
+                          "minContrast": {
+                            "backgroundBase": {
+                              "alpha": 255,
+                              "blue": 8,
+                              "green": 0,
+                              "red": 248
+                            },
+                            "backgroundTintedBase": {
+                              "alpha": 255,
+                              "blue": 0,
+                              "green": 0,
+                              "red": 198
+                            },
+                            "textBase": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textBrightAccent": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textSubdued": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "itemV3": {
+                  "__typename": "EntityResponseWrapper",
+                  "data": {
+                    "__typename": "Entity",
+                    "consumptionExperienceTrait": {
+                      "__typename": "ConsumptionExperienceTrait",
+                      "contentRatings": [],
+                      "duration": {
+                        "nanoSeconds": 88000000,
+                        "seconds": 2429
+                      },
+                      "formats": [
+                        "FORMAT_AUDIO"
+                      ]
+                    },
+                    "identityTrait": {
+                      "__typename": "IdentityTrait",
+                      "contentHierarchyParent": {
+                        "__typename": "Entity",
+                        "identityTrait": {
+                          "__typename": "IdentityTrait",
+                          "name": "Darknet Diaries"
+                        },
+                        "publishingMetadataTrait": {
+                          "__typename": "GenericError"
+                        },
+                        "uri": "spotify:show:4XPl3uEEL9hvqMkoZrzbx5"
+                      },
+                      "contributors": {
+                        "items": [
+                          {
+                            "name": "Nickolas Sharp",
+                            "uri": ""
+                          }
+                        ],
+                        "totalCount": 1
+                      },
+                      "description": "Nickolas Sharp worked for Ubiquiti, a company that makes networking equipment. He noticed that there were some security problems at work. He tried to point them out, but didn't feel like he was being listened to enough. What do you do when the company you work for isn't securing their software up to your standards? Well, he thought he needed to teach them a lesson, but in the end, he learned an even bigger lesson.SponsorsThis show is brought to you by Drata. Drata is the trust management platform that uses AI-driven automation to modernize governance, risk, and compliance, helping thousands of businesses stay audit-ready and scale securely. Learn more at drata.com/darknetdiaries.This show is sponsored by Material Security. Your cloud office (think Google Workspace or Microsoft 365) is the core of your business, but it’s often protected by scattered tools and manual fixes. Material is a purpose-built detection and response platform that closes the gaps those point solutions leave behind. From email threats to misconfigurations and account takeovers, Material monitors everything and steps in with real-time fixes to keep your data flowing where it should. Learn more at https://material.security.Support for this show comes from ThreatLocker. ThreatLocker is a Zero Trust Platform that gives organizations control over what can run and what users and devices can access. It combines prevention with real time detection and automated response, helping security teams stop unauthorized activity and quickly contain compromised machines. Learn how ThreatLocker can strengthen your defenses at threatlocker.com/Darknet.View all active sponsors.SourcesFull list of sources on the show page: https://darknetdiaries.com/episode/178/",
+                      "name": "178: Ubiquiti",
+                      "type": "Episode"
+                    },
+                    "playability": {
+                      "playable": true,
+                      "reason": "PLAYABLE"
+                    },
+                    "uri": "spotify:episode:6CQAC1k7sUVk8FQsXABlRU",
+                    "visualIdentityTrait": {
+                      "__typename": "VisualIdentityTrait",
+                      "sixteenByNineCoverImage": null,
+                      "squareCoverImage": {
+                        "extractedColorSet": {
+                          "encoreBaseSetTextColor": {
+                            "alpha": 255,
+                            "blue": 147,
+                            "green": 162,
+                            "red": 255
+                          },
+                          "highContrast": {
+                            "backgroundBase": {
+                              "alpha": 255,
+                              "blue": 0,
+                              "green": 0,
+                              "red": 159
+                            },
+                            "backgroundTintedBase": {
+                              "alpha": 255,
+                              "blue": 0,
+                              "green": 0,
+                              "red": 97
+                            },
+                            "textBase": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textBrightAccent": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textSubdued": {
+                              "alpha": 255,
+                              "blue": 178,
+                              "green": 190,
+                              "red": 255
+                            }
+                          },
+                          "higherContrast": {
+                            "backgroundBase": {
+                              "alpha": 255,
+                              "blue": 0,
+                              "green": 0,
+                              "red": 101
+                            },
+                            "backgroundTintedBase": {
+                              "alpha": 255,
+                              "blue": 41,
+                              "green": 52,
+                              "red": 147
+                            },
+                            "textBase": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textBrightAccent": {
+                              "alpha": 255,
+                              "blue": 96,
+                              "green": 215,
+                              "red": 30
+                            },
+                            "textSubdued": {
+                              "alpha": 255,
+                              "blue": 178,
+                              "green": 190,
+                              "red": 255
+                            }
+                          },
+                          "minContrast": {
+                            "backgroundBase": {
+                              "alpha": 255,
+                              "blue": 8,
+                              "green": 0,
+                              "red": 248
+                            },
+                            "backgroundTintedBase": {
+                              "alpha": 255,
+                              "blue": 0,
+                              "green": 0,
+                              "red": 198
+                            },
+                            "textBase": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textBrightAccent": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            },
+                            "textSubdued": {
+                              "alpha": 255,
+                              "blue": 255,
+                              "green": 255,
+                              "red": 255
+                            }
+                          }
+                        },
+                        "image": {
+                          "data": {
+                            "__typename": "ImageV2",
+                            "sources": [
+                              {
+                                "imageFormat": "WEBP",
+                                "maxHeight": 64,
+                                "maxWidth": 64,
+                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab6765630000955f9e0df6e852d018dea07465b3"
+                              },
+                              {
+                                "imageFormat": "WEBP",
+                                "maxHeight": 300,
+                                "maxWidth": 300,
+                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab6765630000bdcf9e0df6e852d018dea07465b3"
+                              },
+                              {
+                                "imageFormat": "WEBP",
+                                "maxHeight": 640,
+                                "maxWidth": 640,
+                                "url": "https://image-cdn-fa.spotifycdn.com/image/ab6765630000eeee9e0df6e852d018dea07465b3"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "uid": "d054537f38a3ef70"
+              },
+              {
+                "addedAt": {
+                  "isoString": "2026-08-28T12:25:23Z"
+                },
+                "addedBy": {
+                  "data": {
+                    "__typename": "User",
+                    "avatar": {
+                      "sources": [
+                        {
+                          "height": 64,
+                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
+                          "width": 64
+                        },
+                        {
+                          "height": 300,
+                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
+                          "width": 300
+                        }
+                      ]
+                    },
+                    "name": "Lothrop",
+                    "socialHandle": null,
+                    "uri": "spotify:user:jeff.picard",
+                    "username": "jeff.picard"
+                  }
+                },
+                "attributes": [],
+                "itemV2": {
+                  "__typename": "LocalTrackResponseWrapper",
+                  "data": {
+                    "__typename": "LocalTrack",
+                    "albumName": "",
+                    "artistName": "",
+                    "localTrackDuration": {
+                      "totalMilliseconds": 25000
+                    },
+                    "name": "rudin-real-numbers-stopped-the-greeks-2000-years-earlier",
+                    "uri": "spotify:local:::rudin-real-numbers-stopped-the-greeks-2000-years-earlier:25"
+                  }
+                },
+                "itemV3": {
+                  "__typename": "LocalTrackResponseWrapper"
+                },
+                "uid": "3c2302aefd43fca0"
+              },
+              {
+                "addedAt": {
+                  "isoString": "2026-08-28T12:53:18Z"
+                },
+                "addedBy": {
+                  "data": {
+                    "__typename": "User",
+                    "avatar": {
+                      "sources": [
+                        {
+                          "height": 64,
+                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
+                          "width": 64
+                        },
+                        {
+                          "height": 300,
+                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
+                          "width": 300
+                        }
+                      ]
+                    },
+                    "name": "Lothrop",
+                    "socialHandle": null,
+                    "uri": "spotify:user:jeff.picard",
+                    "username": "jeff.picard"
+                  }
+                },
+                "attributes": [],
+                "itemV2": {
+                  "__typename": "LocalTrackResponseWrapper",
+                  "data": {
+                    "__typename": "LocalTrack",
+                    "albumName": "",
+                    "artistName": "",
+                    "localTrackDuration": {
+                      "totalMilliseconds": 141000
+                    },
+                    "name": "Ezra Pound (3) Poems",
+                    "uri": "spotify:local:::Ezra+Pound+%283%29+Poems:141"
+                  }
+                },
+                "itemV3": {
+                  "__typename": "LocalTrackResponseWrapper"
+                },
+                "uid": "af520d15328bc08b"
+              }
+            ],
+            "pagingInfo": {
+              "limit": 25,
+              "offset": 0
+            },
+            "totalCount": 4
+          },
+          "abuseReportingEnabled": true,
+          "attributes": [],
+          "basePermission": "VIEWER",
+          "currentUserCapabilities": {
+            "canAbuseReport": true,
+            "canAdministratePermissions": false,
+            "canCancelMembership": false,
+            "canEditItems": false,
+            "canEditMetadata": false,
+            "canMixPlaylist": false,
+            "canView": true
+          },
+          "description": "Interesting...",
+          "followers": 0,
+          "following": false,
+          "format": "",
+          "images": {
+            "items": [
+              {
+                "sources": [
+                  {
+                    "height": null,
+                    "url": "https://i.scdn.co/image/ab67616d00001e02129a2d62f242fdc175c9131c",
+                    "width": null
+                  }
+                ]
+              }
+            ]
+          },
+          "members": {
+            "items": [
+              {
+                "isOwner": true,
+                "permissionLevel": "CONTRIBUTOR",
+                "user": {
+                  "data": {
+                    "__typename": "User",
+                    "avatar": {
+                      "sources": [
+                        {
+                          "height": 64,
+                          "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
+                          "width": 64
+                        },
+                        {
+                          "height": 300,
+                          "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
+                          "width": 300
+                        }
+                      ]
+                    },
+                    "name": "Lothrop",
+                    "socialHandle": null,
+                    "uri": "spotify:user:jeff.picard",
+                    "username": "jeff.picard"
+                  }
+                }
+              }
+            ],
+            "totalCount": 1
+          },
+          "name": "Song, Podcast, Local file",
+          "ownerV2": {
+            "data": {
+              "__typename": "User",
+              "avatar": {
+                "sources": [
+                  {
+                    "height": 64,
+                    "url": "https://i.scdn.co/image/ab67757000003b82cb787d17c96f327871eee0f1",
+                    "width": 64
+                  },
+                  {
+                    "height": 300,
+                    "url": "https://i.scdn.co/image/ab6775700000ee85cb787d17c96f327871eee0f1",
+                    "width": 300
+                  }
+                ]
+              },
+              "name": "Lothrop",
+              "socialHandle": null,
+              "uri": "spotify:user:jeff.picard",
+              "username": "jeff.picard"
+            }
+          },
+          "revisionId": "AAAABkBaoePCNbNBYx9TEv7CkjoJOZi1",
+          "sharingInfo": {
+            "shareId": "Cq1MWkEGTP2Xjd06heIZSw",
+            "shareUrl": "https://open.spotify.com/playlist/3tlExkExp1aaYcU91Qhp79?si=Cq1MWkEGTP2Xjd06heIZSw"
+          },
+          "uri": "spotify:playlist:3tlExkExp1aaYcU91Qhp79",
+          "visualIdentity": {
+            "squareCoverImage": {
+              "__typename": "VisualIdentityImage",
+              "extractedColorSet": {
+                "encoreBaseSetTextColor": {
+                  "alpha": 255,
+                  "blue": 205,
+                  "green": 179,
+                  "red": 205
+                },
+                "highContrast": {
+                  "backgroundBase": {
+                    "alpha": 255,
+                    "blue": 98,
+                    "green": 76,
+                    "red": 98
+                  },
+                  "backgroundTintedBase": {
+                    "alpha": 255,
+                    "blue": 65,
+                    "green": 44,
+                    "red": 64
+                  },
+                  "textBase": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  },
+                  "textBrightAccent": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  },
+                  "textSubdued": {
+                    "alpha": 255,
+                    "blue": 223,
+                    "green": 197,
+                    "red": 224
+                  }
+                },
+                "higherContrast": {
+                  "backgroundBase": {
+                    "alpha": 255,
+                    "blue": 67,
+                    "green": 46,
+                    "red": 67
+                  },
+                  "backgroundTintedBase": {
+                    "alpha": 255,
+                    "blue": 101,
+                    "green": 79,
+                    "red": 101
+                  },
+                  "textBase": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  },
+                  "textBrightAccent": {
+                    "alpha": 255,
+                    "blue": 96,
+                    "green": 215,
+                    "red": 30
+                  },
+                  "textSubdued": {
+                    "alpha": 255,
+                    "blue": 223,
+                    "green": 197,
+                    "red": 224
+                  }
+                },
+                "minContrast": {
+                  "backgroundBase": {
+                    "alpha": 255,
+                    "blue": 144,
+                    "green": 120,
+                    "red": 144
+                  },
+                  "backgroundTintedBase": {
+                    "alpha": 255,
+                    "blue": 117,
+                    "green": 94,
+                    "red": 117
+                  },
+                  "textBase": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  },
+                  "textBrightAccent": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  },
+                  "textSubdued": {
+                    "alpha": 255,
+                    "blue": 255,
+                    "green": 255,
+                    "red": 255
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
+    }
+  },
+  {
     "url": "https://cdn.cookielaw.org/scripttemplates/202601.2.0/assets/v2/otPcPanel.json",
     "status": 200,
     "body": {
@@ -11508,6 +11529,31 @@
     "status": 200,
     "body": {
       "data": {
+        "extractedColors": [
+          {
+            "__typename": "ExtractedColors",
+            "colorDark": {
+              "hex": "#867086",
+              "isFallback": false
+            },
+            "colorLight": {
+              "hex": "#907890",
+              "isFallback": false
+            },
+            "colorRaw": {
+              "hex": "#907890",
+              "isFallback": false
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "url": "https://api-partner.spotify.com/pathfinder/v2/query",
+    "status": 200,
+    "body": {
+      "data": {
         "playlistV2": {
           "__typename": "NotFound",
           "message": "Object with uri 'spotify:playlist:37i9dQZF1EYkqdzj48dyYq' not found"
@@ -11567,6 +11613,13 @@
           "message": "Object with uri 'spotify:playlist:37i9dQZF1EYkqdzj48dyYq' not found"
         }
       }
+    }
+  },
+  {
+    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
+    "status": 200,
+    "body": {
+      "errors": []
     }
   },
   {
@@ -11682,13 +11735,6 @@
           "reason": 7
         }
       ]
-    }
-  },
-  {
-    "url": "https://gue1-spclient.spotify.com/gabo-receiver-service/public/v3/events",
-    "status": 200,
-    "body": {
-      "errors": []
     }
   }
 ]
