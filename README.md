@@ -23,6 +23,10 @@ GET /metrics           -> Prometheus exposition
 `:id` is the raw Spotify entity id (the last path segment of
 `open.spotify.com/{track,album,playlist}/{id}`), not a full URL.
 
+Real request/response examples, captured from a running deployment, live in
+[docs/examples](docs/examples/README.md) -- a committed contract an
+out-of-repo client can build and test against.
+
 ## Running it
 
 ```bash
