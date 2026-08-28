@@ -10,16 +10,13 @@ services:
       REDIS_URL: redis://redis:6379
       PORT: "3000"
     ports:
-      # VLAN 30 only, never 0.0.0.0 -- see docs/bot-ingress-contract.md
-      # requirement 2. The firewall (OPNsense seq 88) is what keeps this off
-      # the LAN, not the compose file, so do not widen this without reading
-      # that document.
+      # This host's OWN address on the network you intend to serve -- never
+      # 0.0.0.0, which would silently start publishing on any interface the
+      # host later gains, and never a bare network address, which is not
+      # assignable to a host and cannot be bound at all.
       #
-      # BIND_ADDR must be *this host's own* VLAN 30 address (the contract's
-      # own examples: edge at 192.168.30.10, vaultwarden at 192.168.30.20).
-      # 192.168.30.0 is the network address, not a host address -- it cannot
-      # be bound on any host, so it is deliberately not offered as a default
-      # here; set BIND_ADDR in .env before `docker compose up`.
-      - "${BIND_ADDR:?set BIND_ADDR in .env to this host's VLAN 30 address, e.g. 192.168.30.30}:3000:3000"
+      # No default on purpose: the service has no auth of its own, so where
+      # it listens is a decision the operator has to make deliberately.
+      - "${BIND_ADDR:?set BIND_ADDR in .env to this host's own private address}:3000:3000"
     depends_on: [redis]
     restart: unless-stopped

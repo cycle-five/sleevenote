@@ -64,7 +64,7 @@ Explicitly **not** a goal: recommendations. See Out of scope.
 - **No auth, rate limiting or quotas inside the service.** Those belong to a
   load balancer in front of it. Keeping them out is what lets the private
   deployment and a future public deployment be the same artifact.
-- **Private deployment initially**, on VLAN 30, reachable only inside the
+- **Private deployment initially**, on a private network, reachable only inside the
   estate. Repo private until it works, then public.
 
 ## Decisions
@@ -134,7 +134,7 @@ cracktunes ──HTTP──▶ [ LB: auth, rate limiting ]   ◀── future, p
 ```
 
 The load balancer slot stays empty for the private deployment; `cracktunes`
-calls the service directly on VLAN 30.
+calls the service directly over the private network.
 
 ## API
 
@@ -156,9 +156,9 @@ form) and that code works; moving it server-side would be churn.
 `/health` returns the exact string `sleevenote ok` with
 `Content-Type: text/plain`, and returns it only when Redis is reachable and the
 browser pool has at least one live context. A status-only check is worthless:
-the homelab bot-ingress contract records `bot-template-rs` answering
-Cloudflare's own 530 page for nine days, which any check asserting merely "a
-response arrived" would have called healthy for all nine.
+a service in this operator's own estate spent nine days serving its CDN's
+error page, which any check asserting merely "a response arrived" would have
+called healthy for all nine.
 
 The string is origin-specific on purpose — a caller comparing against
 `sleevenote ok` cannot be fooled by an intermediary's error page, however well

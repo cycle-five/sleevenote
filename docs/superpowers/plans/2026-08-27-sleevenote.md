@@ -901,9 +901,9 @@ testable with fakes and no Redis, no browser and no network.
 
 /health returns the exact string `sleevenote ok`, and only when the store
 answers and the pool has a live context. A status-only check is worthless: the
-bot-ingress contract records bot-template-rs answering Cloudflare's own 530 page
-for nine days, which any check asserting merely that a response arrived would
-have called healthy throughout.
+operator's own estate once spent nine days serving a CDN error page, which any
+check asserting merely that a response arrived would have called healthy
+throughout.
 
 ExtractionEmptyError maps to 502 rather than 404 and increments its own counter.
 Zero tracks does not mean the entity is missing; it means extraction stopped
@@ -1013,10 +1013,10 @@ services:
       REDIS_URL: redis://redis:6379
       PORT: "3000"
     ports:
-      # VLAN 30 only. The bot-ingress contract requires publishing on the
-      # VLAN 30 address rather than 0.0.0.0; the firewall closes the LAN
+      # Publish on the host's own private address rather than 0.0.0.0; the
+      # firewall closes the LAN
       # surface, but do not widen this without reading that document.
-      - "192.168.30.0:3000:3000"
+      - "${BIND_ADDR}:3000:3000"
     depends_on: [redis]
     restart: unless-stopped
 ```
