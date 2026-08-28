@@ -18,16 +18,11 @@ function num(raw: string | undefined, fallback: number): number {
   return n
 }
 
-// Upper bound on one produce() call: navigation, then the scroll loop that
-// pages through a large playlist, then a settle pause. Measured worst case is
-// nav 45s + scroll (200 iterations x 350ms) 70s + settle 3s = ~118s. This
-// must stay comfortably above that figure -- the cache's single-flight lock
-// (cache.ts derives its TTL and wait timeout from this same value) must not
-// expire while its legitimate holder is still working. If it's set too low,
-// the lock releases mid-produce and a second caller acquires the *real* lock
-// and starts a second, concurrent Chromium load -- exactly what single-flight
-// exists to prevent. A future extractor task honours this same value as its
-// own overall timeout, so one number governs both.
+// Upper bound on one produce() call. Measured worst case is ~118s (nav 45s +
+// scroll 200x350ms + settle 3s), and this must stay comfortably above it: the
+// single-flight lock derives its TTL from the same number, so a value too low
+// releases the lock mid-produce and lets a second Chromium load start --
+// precisely what single-flight prevents.
 export const DEFAULT_PRODUCE_BUDGET_MS = 150_000
 
 // Mirrors cache.ts's DEFAULT_FAILURE_TTL_SECONDS. Defined here rather than
@@ -42,14 +37,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     contextMaxUses: num(env.CONTEXT_MAX_USES, 50),
     navTimeoutMs: num(env.NAV_TIMEOUT_MS, 45_000),
     produceBudgetMs: num(env.PRODUCE_BUDGET_MS, DEFAULT_PRODUCE_BUDGET_MS),
-    // How long a failed produce() stays visible to the callers waiting on
-    // that same key (src/cache.ts's FailureCodec). Deliberately seconds, not
-    // minutes: this is a handoff to the cohort already waiting, not a
-    // negative cache for errors. Raising it does buy throttling of a
-    // permanently-broken entity -- at the price of caching our own bugs, so
-    // that a fixed and redeployed scraper keeps serving the old failure for
-    // this long. That trade is the operator's to make, which is why it is a
-    // knob and not a constant.
+    // Seconds, not minutes: a handoff to the cohort already waiting, not a
+    // negative cache for errors. Raising it throttles a broken entity at the
+    // price of caching our own bugs. See docs/design-notes.md.
     failureRelayTtl: num(env.FAILURE_RELAY_TTL, DEFAULT_FAILURE_TTL_SECONDS),
     ttl: {
       // A track's artist and title never change; an album's listing is fixed at

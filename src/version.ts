@@ -5,16 +5,11 @@ import { dirname, join } from 'node:path'
 /**
  * The running build's version, read from package.json at startup.
  *
- * Walks up looking for *this package's* manifest rather than hardcoding a
- * relative path, because the same module resolves from two different depths:
- * `dist/src/version.js` in the image and under `npm start`, but `src/
- * version.ts` under vitest. A fixed '../..' is correct for exactly one of
- * those and silently wrong for the other. The `name` check is what stops the
- * walk from picking up a parent directory's unrelated package.json if this
- * repo is ever checked out inside another project.
- *
- * Never throws: an unreadable manifest degrades to 'unknown'. A service must
- * not fail to boot over its own version string.
+ * Walks up rather than hardcoding a relative path: this module resolves from
+ * `dist/src` in the image but `src` under vitest, so a fixed '../..' is right
+ * for exactly one of them. The `name` check stops the walk from picking up an
+ * enclosing project's manifest. Never throws -- a service must not fail to
+ * boot over its own version string.
  */
 export function readVersion(): string {
   let dir = dirname(fileURLToPath(import.meta.url))
