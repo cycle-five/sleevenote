@@ -135,12 +135,17 @@ A `LocalTrack` genuinely has no Spotify identity. Its uri is
 `spotify:local:<artist>:<album>:<title>:<seconds>` and **the id position is
 empty**, so `idFromUri` correctly returns null. There is nothing to resolve.
 
-Worth recording, because it defeats the obvious workaround: on the account
-tested, the artist and album positions were empty too —
-`spotify:local:::Ezra+Pound+%283%29+Poems:141`, with `artistName: ""` and
-`albumName: ""` — even for a file whose owner had tagged it. The web player
-does not appear to carry local-file metadata, so a local track's *name* is
-generally all there is to work with.
+The uri's other segments are real, though. Measured on
+`spotify:local:::Ezra+Pound+%283%29+Poems:141`: six colon-separated parts,
+the title URL-encoded, and the trailing number the duration in seconds — it
+matched `localTrackDuration.totalMilliseconds` exactly on both files tested.
+Slots 2 and 3 are artist and album.
+
+Both were empty on the account tested, and `artistName`/`albumName` came back
+`""` to match — so Spotify had no artist or album for these particular files
+when they were added. That is a property of the files, not of the transport:
+a local track added *with* artist and album tags should carry them here.
+Untested, and worth confirming before anything is built on it.
 
 ### `unresolvedItems`
 
