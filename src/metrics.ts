@@ -1,4 +1,4 @@
-import { Registry, Counter, Histogram } from 'prom-client'
+import { Registry, Counter, Histogram, Gauge } from 'prom-client'
 
 /**
  * One registry, module-level. This is the one exception to "no module-level
@@ -42,5 +42,23 @@ export const scrapeFailures = new Counter({
 export const extractionEmpty = new Counter({
   name: 'sleevenote_extraction_empty_total',
   help: 'Extractions that navigated successfully but yielded zero tracks -- extraction likely stopped matching Spotify\'s page.',
+  registers: [registry],
+})
+
+/**
+ * Which build is answering. Without this, the version in package.json is a
+ * number that exists only in git: it is not in the image, not in any
+ * response, and not in /health, so there is no way to ask a running instance
+ * what it is -- and "which build is deployed?" is the first question every
+ * incident starts with.
+ *
+ * `build_info` is the Prometheus convention for this: a gauge fixed at 1
+ * whose labels carry the actual payload, so a dashboard can join on it and
+ * an operator can read it straight out of GET /metrics.
+ */
+export const buildInfo = new Gauge({
+  name: 'sleevenote_build_info',
+  help: 'Build metadata for the running instance. Always 1; read the labels.',
+  labelNames: ['version'] as const,
   registers: [registry],
 })

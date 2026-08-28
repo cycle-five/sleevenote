@@ -3,6 +3,8 @@ import { RedisStore } from './store.js'
 import { createPool } from './browser.js'
 import { extract } from './extract.js'
 import { buildServer } from './server.js'
+import { buildInfo } from './metrics.js'
+import { readVersion } from './version.js'
 
 export type ShutdownDeps = {
   app: { close: () => Promise<void> }
@@ -32,13 +34,18 @@ export async function shutdownSequence(deps: ShutdownDeps): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const version = readVersion()
+  // Set once, at startup: this is what lets an operator ask a *running*
+  // instance which build it is, instead of inferring it from a deploy log.
+  buildInfo.set({ version }, 1)
+
   const cfg = loadConfig(process.env)
   const store = new RedisStore(cfg.redisUrl)
   const pool = await createPool(cfg)
   const app = buildServer({ cfg, store, pool, extract })
 
   await app.listen({ port: cfg.port, host: '0.0.0.0' })
-  app.log.info(`sleevenote listening on :${cfg.port}`)
+  app.log.info(`sleevenote ${version} listening on :${cfg.port}`)
 
   let shuttingDown = false
   async function shutdown(signal: string): Promise<void> {
