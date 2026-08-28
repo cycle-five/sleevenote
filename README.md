@@ -86,6 +86,18 @@ copy-pasteable version with fuller comments:
 | `TTL_ALBUM` | `2592000` (30d) | album cache TTL, in seconds |
 | `TTL_PLAYLIST` | `14400` (4h) | playlist cache TTL — playlists genuinely change |
 | `TTL_NEGATIVE` | `600` | how long a confirmed-absent id is negative-cached |
+| `FAILURE_RELAY_TTL` | `5` | how long a failed extraction stays visible to callers already waiting on the same id. Seconds, deliberately: this is a handoff to the cohort already blocked, not a negative cache for errors. Raising it throttles a permanently-broken entity, at the price of a fixed-and-redeployed scraper still serving the old failure until it expires |
+
+## Releasing
+
+Pushing a signed `vX.Y.Z` tag builds and publishes
+`ghcr.io/cycle-five/sleevenote` and creates the GitHub release. The version
+bump belongs in the PR — the release workflow refuses a tag that disagrees
+with `package.json`. Full process, and the reasoning behind the live-Spotify
+release gate, in [docs/releasing.md](docs/releasing.md).
+
+A running instance reports its own build as
+`sleevenote_build_info{version="..."}` on `GET /metrics`.
 
 ## Testing
 
