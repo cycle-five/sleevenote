@@ -18,6 +18,10 @@ export type Album = {
   image: string | null
   url: string
   tracks: Track[]
+  // Items Spotify listed that could not be represented as a Track. Without
+  // this the drop is silent and a consumer cannot tell a short collection
+  // from a truncated one. Compare against `tracks.length`.
+  unresolvedItems: number
 }
 
 export type Playlist = {
@@ -28,6 +32,10 @@ export type Playlist = {
   image: string | null
   url: string
   tracks: Track[]
+  // Items Spotify listed that could not be represented as a Track -- local
+  // files, mostly. Without this the drop is silent and a consumer cannot tell
+  // a short playlist from one whose contents it could not resolve.
+  unresolvedItems: number
 }
 
 export type Recorded = { url: string; status: number; body: unknown }

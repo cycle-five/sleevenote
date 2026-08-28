@@ -11,6 +11,12 @@ const TARGETS: Record<string, string> = {
   'playlist-small': 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
   // Large: crosses several (measured totalCount 150). This is the pagination probe.
   'playlist-large': 'https://open.spotify.com/playlist/37i9dQZF1DX4o1oenSJRJd',
+  // Three items, one of each kind Spotify puts in a playlist: a Track, a
+  // podcast Episode, and a LocalTrack. Every other fixture is editorial
+  // content and therefore all Tracks -- this is the only one that exercises
+  // what a real user's playlist contains. See docs/design-notes.md
+  // ("Non-Track playlist items").
+  'playlist-mixed': 'https://open.spotify.com/playlist/3tlExkExp1aaYcU91Qhp79',
 }
 
 async function capture(name: string, url: string): Promise<void> {

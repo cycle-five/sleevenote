@@ -112,6 +112,64 @@ caps at 50 items and the entire remainder arrives as one second batch — the
 this; it gathers however many qualifying batches appear. Albums beyond 150
 tracks are unverified.
 
+## Non-Track playlist items
+
+Every fixture except `playlist-mixed` is Spotify editorial content, which is
+all `Track`s. A real user's playlist is not. It holds at least three kinds:
+
+| `itemV2.__typename` | `data.__typename` | Has `artists`? | id in `uri`? | Duration field |
+|---|---|---|---|---|
+| `TrackResponseWrapper` | `Track` | yes | yes | `trackDuration` |
+| `EpisodeOrChapterResponseWrapper` | `Episode` | **no** | **yes** | `episodeDuration` |
+| `LocalTrackResponseWrapper` | `LocalTrack` | **no** | **no** | `localTrackDuration` |
+
+### Episodes are admitted; local files cannot be
+
+An `Episode` lacks only an `artists` array — it has a real id, a real name,
+and its show at `podcastV2.data.name`. `trackFromEpisode` uses the show as
+both artist and album, so "Darknet Diaries — 178: Ubiquiti" reaches a
+consumer as a resolvable query. Its `url` points at `/episode/`, not
+`/track/`: the id is an episode id, and a `/track/` URL built from it 404s.
+
+A `LocalTrack` genuinely has no Spotify identity. Its uri is
+`spotify:local:<artist>:<album>:<title>:<seconds>` and **the id position is
+empty**, so `idFromUri` correctly returns null. There is nothing to resolve.
+
+The uri's other segments are real, though. Measured on
+`spotify:local:::Ezra+Pound+%283%29+Poems:141`: six colon-separated parts,
+the title URL-encoded, and the trailing number the duration in seconds — it
+matched `localTrackDuration.totalMilliseconds` exactly on both files tested.
+Slots 2 and 3 are artist and album.
+
+Both were empty on the account tested, and `artistName`/`albumName` came back
+`""` to match — so Spotify had no artist or album for these particular files
+when they were added. That is a property of the files, not of the transport:
+a local track added *with* artist and album tags should carry them here.
+Untested, and worth confirming before anything is built on it.
+
+### `unresolvedItems`
+
+`Playlist` and `Album` both carry `unresolvedItems`: how many items Spotify
+listed that could not be represented as a `Track`.
+
+Without it the drop is silent, and a consumer cannot tell a two-track playlist
+from a four-item one it could only half resolve — the same shape of silence
+this service exists to remove. `tracks.length + unresolvedItems` always equals
+the item count seen.
+
+`Album` carries it for symmetry and because the same thing can happen there:
+`normalize.ts` drops any item with no name or no artists.
+
+### Completeness is measured separately
+
+`playlistItemCount` counts raw items seen, not tracks that survived — so this
+playlist reports 4 seen against 4 declared and passes.
+
+This is exactly why that distinction exists. Were completeness measured on
+`tracks.length`, any playlist containing a podcast or a local file would raise
+`ExtractionIncompleteError` on every request and, because that error is never
+cached, **fail forever**.
+
 ## The failure relay
 
 `withCache` runs one `produce()` per key and makes concurrent callers wait on

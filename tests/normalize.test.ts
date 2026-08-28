@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { readFile } from 'node:fs/promises'
-import { normalizeTrack, normalizeAlbum, normalizePlaylist, albumItemCount, albumTotalCount } from '../src/normalize.js'
+import {
+  normalizeTrack,
+  normalizeAlbum,
+  normalizePlaylist,
+  albumItemCount,
+  albumTotalCount,
+  playlistItemCount,
+  playlistTotalCount,
+} from '../src/normalize.js'
 import type { Recorded } from '../src/types.js'
 
 const PATHFINDER_URL = 'https://api-partner.spotify.com/pathfinder/v2/query'
@@ -374,3 +382,72 @@ describe('robustness against malformed recordings', () => {
     expect(track!.album).toBe(null)
   })
 })
+
+// Every other fixture is Spotify editorial content, which is all Tracks. A
+// real user's playlist is not: it holds podcast Episodes and LocalTracks
+// (files on the user's own machine). This fixture has one Track, one Episode
+// and two LocalTracks.
+//
+// See docs/design-notes.md ("Non-Track playlist items").
+describe('normalizePlaylist -- a real user playlist with mixed item kinds', () => {
+  const MIXED = '3tlExkExp1aaYcU91Qhp79'
+
+  it('sees every item Spotify declares, including the ones it cannot represent', async () => {
+    const recorded = await fixture('playlist-mixed')
+    // The completeness check compares these two, NOT tracks.length. If it
+    // compared tracks.length this playlist would raise
+    // ExtractionIncompleteError on every request and, because that error is
+    // never cached, fail forever.
+    expect(playlistTotalCount(recorded, MIXED)).toBe(4)
+    expect(playlistItemCount(recorded, MIXED)).toBe(4)
+  })
+
+  it('admits the Episode as a track, attributed to its show', async () => {
+    const playlist = (await normalizePlaylist(await fixture('playlist-mixed'), MIXED))!
+    const episode = playlist.tracks.find((t) => t.name === '178: Ubiquiti')
+    expect(episode).toBeDefined()
+    expect(episode!.artists.map((a) => a.name)).toEqual(['Darknet Diaries'])
+    // /episode/, not /track/: the id is an episode id and a /track/ URL built
+    // from it would 404.
+    expect(episode!.url).toBe('https://open.spotify.com/episode/6CQAC1k7sUVk8FQsXABlRU')
+    expect(episode!.durationMs).toBeGreaterThan(0)
+  })
+
+  it('counts the LocalTracks it cannot represent instead of dropping them silently', async () => {
+    const playlist = (await normalizePlaylist(await fixture('playlist-mixed'), MIXED))!
+    expect(playlist.name).toBe('Song, Podcast, Local file')
+    expect(playlist.tracks).toHaveLength(2)
+    // The two local files. Without this a consumer could not tell a
+    // two-track playlist from a four-item one it could only half resolve.
+    expect(playlist.unresolvedItems).toBe(2)
+    // tracks + unresolved must account for every item seen.
+    expect(playlist.tracks.length + playlist.unresolvedItems).toBe(
+      playlistItemCount(await fixture('playlist-mixed'), MIXED),
+    )
+  })
+
+  it('cannot represent a LocalTrack because its uri carries no id', async () => {
+    const recorded = await fixture('playlist-mixed')
+    const local = findItemData(recorded, 'LocalTrack')
+    // `spotify:local:<artist>:<album>:<title>:<seconds>` -- the id position is
+    // empty, so a LocalTrack has no Spotify identity to resolve. Observed on
+    // this account: the artist and album positions are empty too, even for a
+    // file whose owner had tagged it.
+    expect(local!['uri']).toMatch(/^spotify:local:/)
+    expect(String(local!['uri']).split(':')[2]).toBe('')
+    expect(local!['artistName']).toBe('')
+  })
+})
+
+/** First `itemV2.data` in the recorded stream whose `__typename` matches. */
+function findItemData(recorded: Recorded[], typename: string): Record<string, unknown> | null {
+  for (const r of recorded as unknown as Record<string, any>[]) {
+    const items = r?.['body']?.data?.playlistV2?.content?.items
+    if (!Array.isArray(items)) continue
+    for (const it of items) {
+      const data = it?.itemV2?.data
+      if (data?.__typename === typename) return data as Record<string, unknown>
+    }
+  }
+  return null
+}
