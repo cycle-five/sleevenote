@@ -27,8 +27,8 @@ GET /metrics           -> Prometheus exposition
 
 ```bash
 cp .env.example .env
-# Edit .env: at minimum, set BIND_ADDR to this host's own VLAN 30 address
-# (e.g. 192.168.30.30) -- compose refuses to start without it.
+# Edit .env: at minimum, set BIND_ADDR to this host's own address on the
+# private network you want to serve on -- compose refuses to start without it.
 docker compose build
 docker compose up -d
 ```
@@ -40,17 +40,17 @@ with an apt-get'd Chromium is exactly the browser/driver mismatch that rotted
 the prior art this project replaces. If you bump the `playwright` dependency,
 bump the `FROM` tag in the `Dockerfile` in the same change.
 
-`docker-compose.yml` publishes the service on `${BIND_ADDR}:3000`, never
-`0.0.0.0` — see `docs/bot-ingress-contract.md` requirement 2. `BIND_ADDR` must
-be *this host's own* VLAN 30 address, the same way the contract's own examples
-bind (edge at `192.168.30.10`, vaultwarden at `192.168.30.20`); the bare
-network address `192.168.30.0` is not assignable to any host and cannot be
-bound, so it is not offered as a default. The firewall (OPNsense `seq 88`)
-closes the LAN surface off, not the compose file — do not widen this without
-reading that document.
+`docker-compose.yml` publishes on `${BIND_ADDR}:3000` and has no default,
+deliberately. `BIND_ADDR` must be **this host's own address** on the network
+you intend to serve — not `0.0.0.0`, which silently starts publishing on any
+interface the host later gains, and not a bare network address like
+`10.0.0.0`, which is not assignable to a host and cannot be bound at all.
 
-Because the service has no auth of its own, do not publish it anywhere a load
-balancer or firewall isn't already doing that job.
+**The service has no authentication of its own.** It is designed to sit behind
+something that provides it — a load balancer, a reverse proxy, a firewalled
+private network. Publishing it anywhere that is not already true gives
+anonymous callers a browser that will fetch URLs on their behalf. Binding to a
+private address is a convenience, not the control; the network is.
 
 ### Checking it came up
 
