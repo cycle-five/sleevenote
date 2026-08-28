@@ -47,6 +47,20 @@ If a release fails on step 4 because Spotify is down or rate-limiting rather
 than because extraction is broken, re-run the job once it recovers. Do not
 route around it by publishing manually.
 
+## Dry-running the gate
+
+The live gate is the half of a release that can fail for reasons that have
+nothing to do with your change. Before the first tag — or any time after a
+long gap — dispatch the workflow manually:
+
+```bash
+gh workflow run release.yml --ref master
+```
+
+That runs `verify` alone and stops; `publish` is guarded to tag pushes, so a
+dispatch cannot publish. It answers the one question a workstation cannot:
+whether Spotify serves a GitHub runner the same pages it serves you.
+
 ## Consuming the image
 
 ```

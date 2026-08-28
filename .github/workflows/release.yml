@@ -6,6 +6,16 @@ name: Release
 on:
   push:
     tags: ['v*.*.*']
+  # Dry run. The verify job below is the risky half of a release -- it gates
+  # on live Spotify, and nothing proves a GitHub runner is served the same
+  # pages a workstation is until one actually tries. Dispatching this runs
+  # verify alone, so that question gets answered before a tag is pushed
+  # rather than by a failed release. `publish` is guarded to tag pushes, so a
+  # dispatch can never publish anything.
+  #
+  # Only dispatchable once this file is on the default branch -- that is a
+  # GitHub rule about workflow_dispatch, not a choice here.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -34,6 +44,7 @@ jobs:
       # version nobody can find in git. Catch it before anything is published,
       # not after someone is trying to work out which build is deployed.
       - name: Tag must match package.json
+        if: github.event_name == 'push'
         run: |
           declared="v$(node -p "require('./package.json').version")"
           if [ "$declared" != "${GITHUB_REF_NAME}" ]; then
@@ -65,6 +76,8 @@ jobs:
   publish:
     name: Publish image and release
     needs: verify
+    # A dispatched run stops after verify. Only a v*.*.* tag publishes.
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
