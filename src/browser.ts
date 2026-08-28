@@ -68,6 +68,7 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
   // fall out of sync.
   const free: ContextRecord[] = []
   const waiters: Array<{ resolve: (record: ContextRecord) => void; reject: (err: Error) => void }> = []
+  // Set once by close(); read by every inner function below via closure.
   let closed = false
 
   for (let i = 0; i < cfg.poolSize; i++) {
@@ -98,6 +99,11 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
   }
 
   async function releaseRecord(record: ContextRecord): Promise<void> {
+    // `closed` is createPool's own flag, declared above and closed over here
+    // rather than passed in. True on entry means the pool shut down *before*
+    // this release: browser.close() has already torn this context down, so
+    // there is nothing to hand back. Shutdown racing an in-flight recycle is a
+    // different case, caught by the two `closed` checks further down.
     if (closed) return
 
     let returned: ContextRecord
