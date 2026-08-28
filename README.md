@@ -5,8 +5,10 @@ Resolve a music-entity URL to normalized metadata. No provider API key.
 Sleeve notes are the printed metadata on an album sleeve — artist, title, track
 listing. That is what this returns.
 
-**Status: design only.** Nothing is implemented yet. Start with
-[the design spec](docs/superpowers/specs/2026-08-27-sleevenote-design.md).
+A stateless TypeScript service that drives headless Chromium via Playwright,
+reads the JSON the page itself fetches, normalizes it, and caches aggressively
+in Redis. Auth and rate limiting are deliberately absent — they belong to a load
+balancer in front, which keeps private and public deployments the same artifact.
 
 ## What it does
 
@@ -18,18 +20,116 @@ GET /health            -> "sleevenote ok"
 GET /metrics           -> Prometheus exposition
 ```
 
-A stateless TypeScript service that drives headless Chromium via Playwright,
-reads the JSON the page itself fetches, normalizes it, and caches aggressively
-in Redis. Auth and rate limiting are deliberately absent — they belong to a load
-balancer in front, which keeps private and public deployments the same artifact.
+`:id` is the raw Spotify entity id (the last path segment of
+`open.spotify.com/{track,album,playlist}/{id}`), not a full URL.
+
+## Running it
+
+```bash
+cp .env.example .env
+# Edit .env: at minimum, set BIND_ADDR to this host's own VLAN 30 address
+# (e.g. 192.168.30.30) -- compose refuses to start without it.
+docker compose build
+docker compose up -d
+```
+
+The image is built `FROM` Playwright's own published image
+(`mcr.microsoft.com/playwright:v1.62.1-noble`), tag-matched to the `playwright`
+version pinned in `package-lock.json`. This is deliberate: a bare Node image
+with an apt-get'd Chromium is exactly the browser/driver mismatch that rotted
+the prior art this project replaces. If you bump the `playwright` dependency,
+bump the `FROM` tag in the `Dockerfile` in the same change.
+
+`docker-compose.yml` publishes the service on `${BIND_ADDR}:3000`, never
+`0.0.0.0` — see `docs/bot-ingress-contract.md` requirement 2. `BIND_ADDR` must
+be *this host's own* VLAN 30 address, the same way the contract's own examples
+bind (edge at `192.168.30.10`, vaultwarden at `192.168.30.20`); the bare
+network address `192.168.30.0` is not assignable to any host and cannot be
+bound, so it is not offered as a default. The firewall (OPNsense `seq 88`)
+closes the LAN surface off, not the compose file — do not widen this without
+reading that document.
+
+Because the service has no auth of its own, do not publish it anywhere a load
+balancer or firewall isn't already doing that job.
+
+### Checking it came up
+
+`docker compose` builds and runs the stack wherever the *active Docker
+context* points, which is not necessarily `localhost` — e.g. a remote context
+over SSH. Don't assume `127.0.0.1`; resolve the host you're actually talking
+to:
+
+```bash
+HOST=$(docker context inspect --format '{{.Endpoints.docker.Host}}' \
+  | sed -E 's#^(tcp|ssh)://([^@/]+@)?##; s#:.*$##; s#^unix://.*#127.0.0.1#')
+echo "docker context: $(docker context show) -> $HOST"
+curl -fsS "http://$HOST:3000/health"
+```
+
+Expected: `sleevenote ok`, printed alongside the host it hit. Then
+`docker compose down`.
+
+## Configuration
+
+Every key `loadConfig` reads, with its default — see `.env.example` for the
+copy-pasteable version with fuller comments:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `PORT` | `3000` | HTTP port the service listens on |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | the only state this stateless service depends on |
+| `POOL_SIZE` | `2` | browser contexts kept warm; excess requests queue, they don't fail |
+| `CONTEXT_MAX_USES` | `50` | extractions served before a context is recycled |
+| `NAV_TIMEOUT_MS` | `45000` | cap on a single page navigation |
+| `PRODUCE_BUDGET_MS` | `150000` | cap on one whole extraction; also sets the cache's single-flight lock TTL (see `src/config.ts`) |
+| `TTL_TRACK` | `2592000` (30d) | track cache TTL, in seconds |
+| `TTL_ALBUM` | `2592000` (30d) | album cache TTL, in seconds |
+| `TTL_PLAYLIST` | `14400` (4h) | playlist cache TTL — playlists genuinely change |
+| `TTL_NEGATIVE` | `600` | how long a confirmed-absent id is negative-cached |
+| `FAILURE_RELAY_TTL` | `5` | how long a failed extraction stays visible to callers already waiting on the same id. Seconds, deliberately: this is a handoff to the cohort already blocked, not a negative cache for errors. Raising it throttles a permanently-broken entity, at the price of a fixed-and-redeployed scraper still serving the old failure until it expires |
+
+## Releasing
+
+Pushing a signed `vX.Y.Z` tag builds and publishes
+`ghcr.io/cycle-five/sleevenote` and creates the GitHub release. The version
+bump belongs in the PR — the release workflow refuses a tag that disagrees
+with `package.json`. Full process, and the reasoning behind the live-Spotify
+release gate, in [docs/releasing.md](docs/releasing.md).
+
+A running instance reports its own build as
+`sleevenote_build_info{version="..."}` on `GET /metrics`.
+
+## Testing
+
+```bash
+npx vitest run
+```
+
+Runs the offline suite: no network required, though `tests/store.redis.test.ts`
+exercises a real Redis if one is reachable at `REDIS_URL` and otherwise skips
+with a stated reason.
+
+### Live smoke test
+
+`tests/live.smoke.test.ts` is the only test that touches the real internet —
+it drives an actual browser against `open.spotify.com`. It SKIPs with a stated
+reason unless explicitly opted in, so a red run always means something is
+broken, never "no network":
+
+```bash
+SLEEVENOTE_LIVE=1 npx vitest run tests/live.smoke.test.ts
+```
+
+CI runs the offline suite only; a schedule runs this one separately.
 
 ## Why
 
 The provider API this replaces stopped being obtainable. Spotify deprecated a
 set of Web API endpoints in November 2024 and, separately, has blocked the
 creation of new Web API applications since roughly December 2025. An operator
-without pre-existing credentials cannot get them. The design document covers
-what was tried before resorting to this, and what it costs.
+without pre-existing credentials cannot get them.
+[The design document](docs/superpowers/specs/2026-08-27-sleevenote-design.md)
+covers what was tried before resorting to this, and what it costs.
 
 ## Licence
 

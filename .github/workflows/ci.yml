@@ -1,0 +1,64 @@
+name: CI
+
+# Offline suite only. The live smoke test (tests/live.smoke.test.ts) hits
+# real Spotify and is gated behind SLEEVENOTE_LIVE=1, which this workflow
+# never sets -- it stays a manual/scheduled check, not a build gate, so a
+# third party's availability never becomes this repo's build status.
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      # tests/browser.test.ts and tests/extract.test.ts launch real
+      # Chromium (no network access involved) -- the offline suite needs it
+      # installed to run at all.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run offline test suite
+        run: npm test
+
+  # The Dockerfile is the deliverable -- the image is how cracktunes consumes
+  # this service -- but nothing used to build it before a release did, so a
+  # break landed on master invisibly and only surfaced at deploy time. This
+  # job builds it on every PR. It deliberately does NOT push: PRs must never
+  # publish, and the release workflow owns publishing.
+  image:
+    name: Build the image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          # Without a cache every run re-downloads the ~2GB Playwright base
+          # and re-runs npm ci from cold.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
