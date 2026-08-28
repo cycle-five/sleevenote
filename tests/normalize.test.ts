@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { readFile } from 'node:fs/promises'
-import { normalizeTrack, normalizeAlbum, normalizePlaylist, albumItemCount, albumTotalCount } from '../src/normalize.js'
+import {
+  normalizeTrack,
+  normalizeAlbum,
+  normalizePlaylist,
+  albumItemCount,
+  albumTotalCount,
+  playlistItemCount,
+  playlistTotalCount,
+} from '../src/normalize.js'
 import type { Recorded } from '../src/types.js'
 
 const PATHFINDER_URL = 'https://api-partner.spotify.com/pathfinder/v2/query'
@@ -374,3 +382,70 @@ describe('robustness against malformed recordings', () => {
     expect(track!.album).toBe(null)
   })
 })
+
+// Every other fixture is Spotify editorial content, which is all Tracks. A
+// real user's playlist is not: it can hold podcast Episodes and LocalTracks
+// (files on the user's own machine). This fixture has exactly one of each,
+// and these tests pin what the normalizer currently does with them so any
+// change to that is a deliberate one and not a surprise.
+//
+// See docs/design-notes.md ("Non-Track playlist items").
+describe('normalizePlaylist -- a real user playlist with mixed item kinds', () => {
+  const MIXED = '3tlExkExp1aaYcU91Qhp79'
+
+  it('sees every item Spotify declares, including the ones it cannot represent', async () => {
+    const recorded = await fixture('playlist-mixed')
+    // The completeness check compares these two, NOT tracks.length. If it
+    // compared tracks.length this playlist would raise
+    // ExtractionIncompleteError on every request and, because that error is
+    // never cached, fail forever.
+    expect(playlistTotalCount(recorded, MIXED)).toBe(3)
+    expect(playlistItemCount(recorded, MIXED)).toBe(3)
+  })
+
+  it('drops the Episode and the LocalTrack, keeping only the Track', async () => {
+    const playlist = await normalizePlaylist(await fixture('playlist-mixed'), MIXED)
+    expect(playlist).not.toBeNull()
+    expect(playlist!.name).toBe('Song, Podcast, Local file')
+    expect(playlist!.tracks).toHaveLength(1)
+    expect(playlist!.tracks[0]!.name).toBe("Oh Shit I'm Feeling It")
+  })
+
+  // Why each is dropped, pinned separately -- the two reasons are different
+  // and only one of them is inherent.
+  it('drops the LocalTrack because its uri carries no id', async () => {
+    const recorded = await fixture('playlist-mixed')
+    const local = findItemData(recorded, 'LocalTrack')
+    // `spotify:local:::<name>:<seconds>` -- the id position is empty, so a
+    // LocalTrack has no Spotify identity to resolve. This one is inherent.
+    expect(local!['uri']).toMatch(/^spotify:local:::/)
+    expect(String(local!['uri']).split(':')[2]).toBe('')
+  })
+
+  it('drops the Episode despite it having a perfectly good id', async () => {
+    const recorded = await fixture('playlist-mixed')
+    const ep = findItemData(recorded, 'Episode')
+    // An Episode has a real uri and a name, and its show name sits at
+    // podcastV2.data.name. It is dropped only because `trackFromNode`
+    // requires an `artists` array and an Episode has none -- not because it
+    // is unresolvable. This one is a choice, not a constraint.
+    expect(String(ep!['uri']).split(':')[2]).toMatch(/^[A-Za-z0-9]+$/)
+    expect(ep!['name']).toBe('178: Ubiquiti')
+    expect('artists' in ep!).toBe(false)
+    const podcast = ep!['podcastV2'] as { data?: { name?: string } } | undefined
+    expect(podcast?.data?.name).toBe('Darknet Diaries')
+  })
+})
+
+/** First `itemV2.data` in the recorded stream whose `__typename` matches. */
+function findItemData(recorded: Recorded[], typename: string): Record<string, unknown> | null {
+  for (const r of recorded as unknown as Record<string, any>[]) {
+    const items = r?.['body']?.data?.playlistV2?.content?.items
+    if (!Array.isArray(items)) continue
+    for (const it of items) {
+      const data = it?.itemV2?.data
+      if (data?.__typename === typename) return data as Record<string, unknown>
+    }
+  }
+  return null
+}

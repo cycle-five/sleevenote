@@ -112,6 +112,53 @@ caps at 50 items and the entire remainder arrives as one second batch — the
 this; it gathers however many qualifying batches appear. Albums beyond 150
 tracks are unverified.
 
+## Non-Track playlist items
+
+Every fixture except `playlist-mixed` is Spotify editorial content, which is
+all `Track`s. A real user's playlist is not. It can hold at least three kinds:
+
+| `itemV2.__typename` | `data.__typename` | Has `artists`? | id in `uri`? | Duration field |
+|---|---|---|---|---|
+| `TrackResponseWrapper` | `Track` | yes | yes | `trackDuration` |
+| `EpisodeOrChapterResponseWrapper` | `Episode` | **no** | **yes** | `episodeDuration` |
+| `LocalTrackResponseWrapper` | `LocalTrack` | **no** | **no** | `localTrackDuration` |
+
+`trackFromNode` requires a name, an id parsed from `uri`, and at least one
+artist. Both non-Track kinds fail that, so a playlist of one song, one podcast
+episode and one local file currently normalizes to **one track**.
+
+### The two are dropped for different reasons
+
+**A `LocalTrack` genuinely has no Spotify identity.** Its uri is
+`spotify:local:::<name>:<seconds>` — the id position is empty, so
+`idFromUri` correctly returns null. It is a file on the user's own machine.
+
+**An `Episode` is dropped by choice, not by constraint.** It has a real uri
+(`spotify:episode:6CQAC1k7sUVk8FQsXABlRU`), a real name, and its show name at
+`podcastV2.data.name`. It is dropped only because it carries no `artists`
+array. For a consumer resolving Spotify metadata into a search query,
+"Darknet Diaries — 178: Ubiquiti" is every bit as resolvable as a song.
+
+### Completeness is not affected
+
+`playlistItemCount` counts raw items seen, not tracks that survived
+validation — so this playlist reports 3 seen against 3 declared and passes.
+
+This is exactly why that distinction exists. Were completeness measured on
+`tracks.length`, any playlist containing a podcast or a local file would raise
+`ExtractionIncompleteError` on every request and, because that error is never
+cached, **fail forever**.
+
+### The open question
+
+The drop is currently *silent*: the response carries one track and nothing
+indicates that two further items existed and were deliberately not
+represented. A consumer cannot tell "a playlist with one song" from "a
+playlist with three items, two unrepresentable".
+
+That is the same shape of silence this service exists to remove, so it is
+worth an explicit decision rather than an accident. Unresolved.
+
 ## The failure relay
 
 `withCache` runs one `produce()` per key and makes concurrent callers wait on
