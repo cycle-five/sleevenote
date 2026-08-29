@@ -265,3 +265,42 @@ least one test passed for the wrong reason until mutation testing caught it (a
 `produce()` fast enough that the waiter read the value before ever consulting
 the failure marker). When a test guards a timing-dependent path, check that it
 actually fails with the fix removed.
+
+## What the logs say, and why there were none
+
+The service shipped with `Fastify()` and no logger option, whose default is
+`logger: false`. That makes `app.log` a no-op — so `index.ts`'s startup line,
+its shutdown lines, and every error inside a request went nowhere. A deployed
+instance produced an empty `docker logs`, and a lookup that failed left nothing
+behind to read. Diagnosing one meant reproducing it.
+
+Two lines now come out of a request.
+
+**`request completed`** — one per request, from an `onResponse` hook, carrying
+method, url, status, `durationMs` and the `X-Cache` disposition. Fastify's own
+incoming/completed pair is suppressed (`LogController({ disableRequestLogging:
+true })`) so this is the only one: a request is one line, and `cache` next to
+`durationMs` makes a cache hit distinguishable from a resolve at a glance.
+
+**`extraction failed`** — when an extraction throws, carrying `kind`, `id`, the
+error class, and `evidence`.
+
+`evidence` is the point. `normalizeByKind` returning `null` currently becomes a
+`NotFoundError`, which the HTTP layer answers 404 and negative-caches for
+`TTL_NEGATIVE`. But `null` covers two very different situations: Spotify said
+the entity is gone, and *we captured nothing at all*. A live playlist was served
+as "not found" because the second was reported as the first — and, being
+negative-cached, stayed that way for ten minutes.
+
+`ExtractionEvidence` records what the capture actually saw — how many JSON
+responses, which distinct statuses, which distinct paths. `recorded: 0` is the
+signature of a capture that saw nothing, which is our failure and not evidence
+of absence. Every throw inside `runExtraction` carries it, so a line *without*
+evidence means one of exactly two things: a failure relayed to a waiter (see
+"The failure relay" — `reviveFailure` rebuilds from a wire form that does not
+carry the capture; read the holder's own line instead), or a timeout, which is
+rejected from outside the extraction and never had one.
+
+Splitting those two cases onto different status codes is the next change. This
+one exists so that split is written against observed evidence rather than a
+guess about what Spotify's page emits for a deleted id.

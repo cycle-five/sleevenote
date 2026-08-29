@@ -1,10 +1,17 @@
-import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify'
+import Fastify, {
+  LogController,
+  type FastifyBaseLogger,
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from 'fastify'
 import { StoreError, type CacheStore } from './store.js'
 import type { Pool } from './browser.js'
 import type { Config } from './config.js'
 import type { Track, Album, Playlist } from './types.js'
 import { cacheKey, withCache, type FailureCodec } from './cache.js'
 import {
+  ExtractionError,
   NotFoundError,
   ExtractionEmptyError,
   ExtractionIncompleteError,
@@ -25,6 +32,8 @@ export type ServerDeps = {
   pool: Pool
   extract: ExtractFn
   now?: () => number
+  /** Overrides `cfg.logLevel`. Tests pass a recorder; production passes nothing. */
+  logger?: FastifyBaseLogger
 }
 
 const ENTITY_KINDS = ['track', 'album', 'playlist'] as const
@@ -131,7 +140,33 @@ function recordFailureMetrics(err: unknown): void {
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const { cfg, store, pool } = deps
   const now = deps.now ?? ((): number => Math.floor(Date.now() / 1000))
-  const fastify = Fastify()
+  // `disableRequestLogging` suppresses Fastify's own incoming/completed pair
+  // in favour of the single line in the onResponse hook below: one request,
+  // one line, carrying the fields worth grepping for.
+  // Fastify 5 keeps these apart: `logger` takes options and builds pino,
+  // `loggerInstance` takes an already-built one. Passing an instance as
+  // `logger` is rejected at construction.
+  // Fastify's own incoming/completed pair is suppressed in favour of the
+  // single line in the onResponse hook below: one request, one line, carrying
+  // the fields worth grepping for. (The top-level `disableRequestLogging`
+  // shorthand does the same thing but is deprecated for Fastify 6.)
+  const logController = new LogController({ disableRequestLogging: true })
+  const fastify = deps.logger
+    ? Fastify({ loggerInstance: deps.logger, logController })
+    : Fastify({ logger: { level: cfg.logLevel }, logController })
+
+  fastify.addHook('onResponse', async (request, reply) => {
+    request.log.info(
+      {
+        method: request.method,
+        url: request.url,
+        status: reply.statusCode,
+        durationMs: Math.round(reply.elapsedTime),
+        cache: reply.getHeader('X-Cache'),
+      },
+      'request completed',
+    )
+  })
 
   async function timedExtract(kind: EntityKind, id: string): Promise<Track | Album | Playlist> {
     const endTimer = scrapeDuration.startTimer()
@@ -142,7 +177,12 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     }
   }
 
-  async function handleEntity(kind: EntityKind, id: string, reply: FastifyReply): Promise<unknown> {
+  async function handleEntity(
+    kind: EntityKind,
+    id: string,
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<unknown> {
     // Rejected before touching Redis or the pool.
     if (!ENTITY_ID_PATTERN.test(id)) {
       reply.code(400)
@@ -186,6 +226,22 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       // Keeping these four apart is the point. Collapsing any pair into one
       // status code is the failure mode this service exists to fix.
       recordFailureMetrics(err)
+      // The evidence line, and the reason this exists: `recorded: 0` means the
+      // capture saw no JSON at all, which is our failure -- not proof the
+      // entity is absent. Without it the two are indistinguishable after the
+      // fact, which is exactly how a live playlist came back "not found".
+      //
+      // Every throw inside runExtraction carries evidence, so a line WITHOUT
+      // it is a failure relayed to a waiter from the holder that produced it
+      // (reviveFailure rebuilds from the wire form, which does not carry the
+      // capture) -- or a timeout, which never had one. Read the holder's own
+      // line for the evidence; it shares nothing but the key.
+      if (err instanceof ExtractionError) {
+        request.log.warn(
+          { kind, id, error: err.name, message: err.message, evidence: err.evidence },
+          'extraction failed',
+        )
+      }
       if (err instanceof NotFoundError) {
         // So a repeat request for a nonexistent id doesn't re-extract.
         await store.set(negativeKey(kind, id), '1', cfg.ttl.negative)
@@ -212,7 +268,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   for (const kind of ENTITY_KINDS) {
     fastify.get<{ Params: { id: string } }>(`/v1/${kind}/:id`, async (req, reply) =>
-      handleEntity(kind, req.params.id, reply),
+      handleEntity(kind, req.params.id, req, reply),
     )
   }
 

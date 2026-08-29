@@ -81,6 +81,7 @@ copy-pasteable version with fuller comments:
 | Key | Default | Meaning |
 |---|---|---|
 | `PORT` | `3000` | HTTP port the service listens on |
+| `LOG_LEVEL` | `info` | pino level. `silent` turns logging off; anything below `warn` still emits one line per request |
 | `REDIS_URL` | `redis://127.0.0.1:6379` | the only state this stateless service depends on |
 | `POOL_SIZE` | `2` | browser contexts kept warm; excess requests queue, they don't fail |
 | `CONTEXT_MAX_USES` | `50` | extractions served before a context is recycled |

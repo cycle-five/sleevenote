@@ -33,7 +33,9 @@ async function counterTotal(counter: CounterLike): Promise<number> {
   return m.values.reduce((sum, v) => sum + v.value, 0)
 }
 
-const cfg = loadConfig({})
+// Silent: buildServer now builds a real pino unless a logger is injected,
+// and an `info`-level suite floods stdout with a line per request.
+const cfg = loadConfig({ LOG_LEVEL: 'silent' })
 const fakePool = { acquire: async () => { throw new Error('unused') }, liveContexts: () => 1, close: async () => {} }
 
 function server(extract: any, store = new MemoryStore()) {
@@ -264,7 +266,7 @@ describe('produceBudgetMs threading', () => {
   // non-default budget and observes the one place that value becomes
   // externally visible: the TTL withCache passes to store.lock().
   it('threads cfg.produceBudgetMs into withCache rather than relying on its default', async () => {
-    const customCfg = loadConfig({ PRODUCE_BUDGET_MS: '5000' })
+    const customCfg = loadConfig({ PRODUCE_BUDGET_MS: '5000', LOG_LEVEL: 'silent' })
     const store = new MemoryStore()
     const lockTtls: number[] = []
     const originalLock = store.lock.bind(store)
@@ -401,7 +403,7 @@ describe('entity id validation (fix wave, finding 3)', () => {
 // the "same request, two answers, depending on who won the lock" the codec
 // exists to prevent.
 describe('concurrent callers on a failing entity', () => {
-  const fastCfg = loadConfig({ PRODUCE_BUDGET_MS: '2000' })
+  const fastCfg = loadConfig({ PRODUCE_BUDGET_MS: '2000', LOG_LEVEL: 'silent' })
   function fastServer(extract: any, store = new MemoryStore()) {
     return buildServer({ cfg: fastCfg, store, pool: fakePool as any, extract })
   }

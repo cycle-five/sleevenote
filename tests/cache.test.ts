@@ -9,6 +9,14 @@ describe('loadConfig', () => {
     expect(c.ttl.track).toBe(30 * 24 * 3600)
   })
 
+  // The service shipped with no logger at all: `app.log` was a no-op, so a
+  // deployed instance emitted nothing, not even its own startup line.
+  it('defaults to a level that actually emits, and honours an override', () => {
+    expect(loadConfig({}).logLevel).toBe('info')
+    expect(loadConfig({ LOG_LEVEL: 'debug' }).logLevel).toBe('debug')
+    expect(loadConfig({ LOG_LEVEL: 'silent' }).logLevel).toBe('silent')
+  })
+
   it('rejects a nonsense value loudly instead of silently defaulting', () => {
     expect(() => loadConfig({ PORT: 'banana' })).toThrow()
     expect(() => loadConfig({ POOL_SIZE: '0' })).toThrow()
