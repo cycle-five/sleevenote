@@ -6,7 +6,9 @@ type Recorded = { url: string; status: number; body: unknown }
 const TARGETS: Record<string, string> = {
   // A well-known stable track.
   track: 'https://open.spotify.com/track/0c6xIDDpzE81m2q797ordA',
-  album: 'https://open.spotify.com/album/6ymZBbRSmzAvoSGmwAFoxm',
+  // Original target (6ymZBbRSmzAvoSGmwAFoxm) was pulled from Spotify after
+  // the corpus was recorded and now 404s. Replaced with a verified-working id.
+  album: 'https://open.spotify.com/album/5s5svl5DzlSmEvkjuL8Upw',
   // Small: crosses one page boundary (measured totalCount 50).
   'playlist-small': 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
   // Large: crosses several (measured totalCount 150). This is the pagination probe.
