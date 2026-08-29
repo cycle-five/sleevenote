@@ -4,6 +4,7 @@ import { MemoryStore } from '../src/cache.js'
 import { loadConfig } from '../src/config.js'
 import {
   NotFoundError,
+  ExtractionSilentError,
   ExtractionEmptyError,
   ExtractionIncompleteError,
   ExtractionTimeoutError,
@@ -446,6 +447,64 @@ describe('concurrent callers on a failing entity', () => {
     for (const res of [a, b]) {
       expect(res.statusCode).toBe(504)
       expect(res.json().error).toBe('timeout')
+    }
+  })
+})
+
+describe('a silent extraction is our failure, not the entity being absent', () => {
+  it('answers 502 extraction_silent rather than 404', async () => {
+    const app = server(async () => {
+      throw new ExtractionSilentError('nothing matched')
+    })
+    const res = await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    expect(res.statusCode).toBe(502)
+    expect(res.json().error).toBe('extraction_silent')
+  })
+
+  // The sharpest edge of the old behaviour: a transient scrape failure was
+  // negative-cached as "previously confirmed absent", so one flake took a live
+  // entity offline for TTL_NEGATIVE even after extraction recovered.
+  it('is not negative-cached, so the next request re-extracts', async () => {
+    const store = new MemoryStore()
+    let calls = 0
+    const app = server(async () => {
+      calls += 1
+      if (calls === 1) throw new ExtractionSilentError('nothing matched')
+      return TRACK
+    }, store)
+
+    expect((await app.inject({ method: 'GET', url: '/v1/track/abc' })).statusCode).toBe(502)
+    const second = await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    expect(second.statusCode).toBe(200)
+    expect(calls).toBe(2)
+  })
+
+  it('is counted as a failure, unlike not-found', async () => {
+    const before = await counterValue(scrapeFailures, { reason: 'extraction_silent' })
+    const app = server(async () => {
+      throw new ExtractionSilentError('nothing matched')
+    })
+    await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    expect(await counterValue(scrapeFailures, { reason: 'extraction_silent' })).toBe(before + 1)
+  })
+
+  // The relay hands a holder's failure to the cohort already waiting. A kind
+  // missing from the codec silently degrades to 'other' -- a 502 with the
+  // wrong error string, and no way to tell from the outside.
+  it('survives the failure relay with its identity intact', async () => {
+    const store = new MemoryStore()
+    const app = server(async () => {
+      await new Promise((r) => setTimeout(r, 200))
+      throw new ExtractionSilentError('nothing matched')
+    }, store)
+
+    const [a, b] = await Promise.all([
+      app.inject({ method: 'GET', url: '/v1/track/relayed' }),
+      app.inject({ method: 'GET', url: '/v1/track/relayed' }),
+    ])
+    for (const res of [a, b]) {
+      expect(res.statusCode).toBe(502)
+      expect(res.json().error).toBe('extraction_silent')
     }
   })
 })

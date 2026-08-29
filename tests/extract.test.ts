@@ -8,6 +8,7 @@ import {
   NotFoundError,
   ExtractionEmptyError,
   ExtractionIncompleteError,
+  ExtractionSilentError,
 } from '../src/extract.js'
 import { normalizePlaylist, playlistItemCount, playlistTotalCount } from '../src/normalize.js'
 import type { Recorded } from '../src/types.js'
@@ -51,12 +52,13 @@ describe('recordResponses', () => {
       return route.fulfill({ status: 200, contentType: 'text/plain', body: 'not json' })
     })
 
-    const recorded = await recordResponses(lease.page, 'https://fake.test/page', 10_000)
+    const capture = await recordResponses(lease.page, 'https://fake.test/page', 10_000)
     await lease.release()
 
-    const bodies = recorded.map((r) => r.body)
+    const bodies = capture.responses.map((r) => r.body)
     expect(bodies).toContainEqual({ hello: 'world' })
-    expect(recorded.every((r) => r.url.endsWith('.json'))).toBe(true)
+    expect(capture.responses.every((r) => r.url.endsWith('.json'))).toBe(true)
+    expect(capture.navStatus).toBe(200)
   })
 })
 
@@ -277,7 +279,10 @@ describe('extract', () => {
     }
   }, 20_000)
 
-  it('throws NotFoundError, and still releases the lease, when nothing matches', async () => {
+  // A 200 that yields nothing is OUR failure. Reporting it as absence is what
+  // served a live playlist as "not found" -- and, being negative-cached, kept
+  // serving it that way for TTL_NEGATIVE.
+  it('throws ExtractionSilentError, not NotFoundError, and still releases the lease, when the page loaded fine but nothing matched', async () => {
     const nCfg = loadConfig({ POOL_SIZE: '1' })
     const nPool = await createPool(nCfg)
     try {
@@ -287,7 +292,7 @@ describe('extract', () => {
         route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>nothing here</body></html>' }),
       )
 
-      await expect(extract('track', id, nPool, nCfg)).rejects.toThrow(NotFoundError)
+      await expect(extract('track', id, nPool, nCfg)).rejects.toThrow(ExtractionSilentError)
 
       // Pool size 1: if extract() left the lease unreleased on this throwing
       // path, this would never resolve -- there is no second context for it
@@ -299,6 +304,59 @@ describe('extract', () => {
       await (await reacquire).release()
     } finally {
       await nPool.close()
+    }
+  }, 20_000)
+
+  // Measured against the real site: a dead track or album answers 404, and a
+  // dead playlist answers 400 -- so the test is "not ok", never "=== 404".
+  it.each([
+    ['track', 404],
+    ['album', 404],
+    ['playlist', 400],
+  ] as const)('throws NotFoundError when Spotify answers a %s navigation with %i', async (kind, status) => {
+    const cfg404 = loadConfig({ POOL_SIZE: '1' })
+    const pool404 = await createPool(cfg404)
+    try {
+      const page = await routedPage(pool404)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({ status, contentType: 'text/html', body: '<html><body>Page not found</body></html>' }),
+      )
+      await expect(extract(kind, 'goneId', pool404, cfg404)).rejects.toThrow(NotFoundError)
+    } finally {
+      await pool404.close()
+    }
+  }, 20_000)
+
+  it('carries the navigation status as evidence, so the two cases are distinguishable in a log', async () => {
+    const eCfg = loadConfig({ POOL_SIZE: '1' })
+    const ePool = await createPool(eCfg)
+    try {
+      const page = await routedPage(ePool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>nothing</body></html>' }),
+      )
+      const err = await extract('track', 'someId', ePool, eCfg).catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(ExtractionSilentError)
+      expect((err as ExtractionSilentError).evidence).toMatchObject({ navStatus: 200, recorded: 0 })
+    } finally {
+      await ePool.close()
+    }
+  }, 20_000)
+
+  it('does not scroll a page that already said the entity is gone', async () => {
+    const sCfg = loadConfig({ POOL_SIZE: '1' })
+    const sPool = await createPool(sCfg)
+    try {
+      const page = await routedPage(sPool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({ status: 404, contentType: 'text/html', body: '<html><body>gone</body></html>' }),
+      )
+      const started = Date.now()
+      await expect(extract('track', 'goneId', sPool, sCfg)).rejects.toThrow(NotFoundError)
+      // The scroll settle alone is 3s; bailing on the navigation status skips it.
+      expect(Date.now() - started).toBeLessThan(3_000)
+    } finally {
+      await sPool.close()
     }
   }, 20_000)
 

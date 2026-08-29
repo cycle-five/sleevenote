@@ -13,6 +13,7 @@ import { cacheKey, withCache, type FailureCodec } from './cache.js'
 import {
   ExtractionError,
   NotFoundError,
+  ExtractionSilentError,
   ExtractionEmptyError,
   ExtractionIncompleteError,
   ExtractionTimeoutError,
@@ -52,6 +53,7 @@ const ENTITY_ID_PATTERN = /^[A-Za-z0-9]{1,64}$/
 // (or vice versa) is the failure mode to watch for.
 type RelayedFailure =
   | { kind: 'not_found'; message: string }
+  | { kind: 'extraction_silent'; message: string }
   | { kind: 'extraction_empty'; message: string }
   | { kind: 'extraction_incomplete'; message: string }
   | { kind: 'timeout'; message: string }
@@ -61,6 +63,7 @@ type RelayedFailure =
 function classifyFailure(err: unknown): RelayedFailure {
   const message = err instanceof Error ? err.message : String(err)
   if (err instanceof NotFoundError) return { kind: 'not_found', message }
+  if (err instanceof ExtractionSilentError) return { kind: 'extraction_silent', message }
   if (err instanceof ExtractionEmptyError) return { kind: 'extraction_empty', message }
   if (err instanceof ExtractionIncompleteError) return { kind: 'extraction_incomplete', message }
   if (err instanceof ExtractionTimeoutError) return { kind: 'timeout', message }
@@ -72,6 +75,8 @@ function reviveFailure(f: RelayedFailure): unknown {
   switch (f.kind) {
     case 'not_found':
       return new NotFoundError(f.message)
+    case 'extraction_silent':
+      return new ExtractionSilentError(f.message)
     case 'extraction_empty':
       return new ExtractionEmptyError(f.message)
     case 'extraction_incomplete':
@@ -113,6 +118,14 @@ function recordFailureMetrics(err: unknown): void {
     // Counted as itself so a Redis outage cannot masquerade as "extraction
     // stopped matching Spotify's page", nor fall into 'unknown'.
     scrapeFailures.inc({ reason: 'store' })
+    return
+  }
+  if (err instanceof ExtractionSilentError) {
+    // The other canary, and the more important one: this is what a wholesale
+    // redesign looks like. It used to be a NotFoundError, and the line above
+    // returns without counting those -- so total extraction failure recorded
+    // ZERO failures while answering 404 to everything.
+    scrapeFailures.inc({ reason: 'extraction_silent' })
     return
   }
   if (err instanceof ExtractionEmptyError) {
@@ -247,6 +260,12 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         await store.set(negativeKey(kind, id), '1', cfg.ttl.negative)
         reply.code(404)
         return { error: 'not_found', id, message: err.message }
+      }
+      if (err instanceof ExtractionSilentError) {
+        // Never negative-cached, unlike the 404 this used to be: a transient
+        // failure must not take a live entity offline for TTL_NEGATIVE.
+        reply.code(502)
+        return { error: 'extraction_silent', id, message: err.message }
       }
       if (err instanceof ExtractionEmptyError) {
         reply.code(502)

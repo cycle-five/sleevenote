@@ -12,11 +12,12 @@ import {
 } from './normalize.js'
 import type { Album, Playlist, Recorded, Track } from './types.js'
 
-// Four distinct failures, never collapsed into one. A 404 means the entity
-// does not exist; the others mean our extraction stopped matching Spotify's
-// page. Confusing them is how the prior art died -- silently. None of the
-// latter three may ever populate the cache.
-// See docs/design-notes.md ("The four extraction failures").
+// Five distinct failures, never collapsed into one. A 404 means Spotify
+// answered the page non-2xx and the entity is genuinely gone; the others mean
+// our extraction stopped matching Spotify's page. Confusing them is how the
+// prior art died -- silently. None of the latter four may ever populate the
+// cache. See docs/design-notes.md ("The five extraction failures") and
+// ("Absence has to be evidenced").
 /**
  * What the page actually gave us, carried on the error so the HTTP layer can
  * log it without reproducing the extraction.
@@ -25,6 +26,8 @@ import type { Album, Playlist, Recorded, Track } from './types.js'
  * at all, which is our failure and not evidence that the entity is absent.
  */
 export type ExtractionEvidence = {
+  /** Status of the navigation itself; `null` when the browser reported none. */
+  navStatus: number | null
   /** JSON responses captured during the page load. */
   recorded: number
   /** Distinct HTTP statuses among them, ascending. */
@@ -35,8 +38,16 @@ export type ExtractionEvidence = {
 
 const MAX_EVIDENCE_PATHS = 8
 
+/** What one page load produced. */
+export type Capture = {
+  /** Status of the navigation itself; `null` when the browser reported none. */
+  navStatus: number | null
+  responses: Recorded[]
+}
+
 /** Summarise a capture for logging. Pure, so the summary is testable alone. */
-export function evidenceFrom(recorded: Recorded[]): ExtractionEvidence {
+export function evidenceFrom(capture: Capture): ExtractionEvidence {
+  const { navStatus, responses: recorded } = capture
   const statuses = [...new Set(recorded.map((r) => r.status))].sort((a, b) => a - b)
   const paths = [
     ...new Set(
@@ -51,7 +62,7 @@ export function evidenceFrom(recorded: Recorded[]): ExtractionEvidence {
       }),
     ),
   ].slice(0, MAX_EVIDENCE_PATHS)
-  return { recorded: recorded.length, statuses, paths }
+  return { navStatus, recorded: recorded.length, statuses, paths }
 }
 
 /** Carries [`ExtractionEvidence`] where the thrower had it to hand. */
@@ -66,6 +77,19 @@ export class ExtractionError extends Error {
 }
 
 export class NotFoundError extends ExtractionError {}
+
+/**
+ * The page loaded, and we recognised nothing on it.
+ *
+ * Distinct from [`ExtractionEmptyError`], which found the entity and saw zero
+ * items in it: this one found no entity at all, which points at a wholesale
+ * shape change rather than one broken list. It used to be reported as
+ * [`NotFoundError`] -- a 404, negative-cached -- so a scraper that stopped
+ * working looked exactly like a Spotify catalogue full of deleted entities,
+ * and recorded no failures at all while doing it.
+ */
+export class ExtractionSilentError extends ExtractionError {}
+
 export class ExtractionEmptyError extends ExtractionError {}
 
 // A partial recovery that still returns *some* tracks, which a bare
@@ -95,8 +119,9 @@ const SCROLL_SETTLE_MS = 3_000
  * A track page needs no special case: nothing matches the container
  * heuristic, so the loop exits on its first iteration.
  */
-export async function recordResponses(page: Page, url: string, navTimeoutMs: number): Promise<Recorded[]> {
+export async function recordResponses(page: Page, url: string, navTimeoutMs: number): Promise<Capture> {
   const recorded: Recorded[] = []
+  let navStatus: number | null = null
 
   const onResponse = async (response: Response): Promise<void> => {
     const contentType = response.headers()['content-type'] ?? ''
@@ -110,7 +135,15 @@ export async function recordResponses(page: Page, url: string, navTimeoutMs: num
   page.on('response', onResponse)
 
   try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: navTimeoutMs })
+    const navigation = await page.goto(url, { waitUntil: 'networkidle', timeout: navTimeoutMs })
+    navStatus = navigation?.status() ?? null
+
+    // Spotify answers a dead entity on the document itself -- 404 for a track
+    // or album, 400 for a playlist (measured, hence `>= 400` and never
+    // `=== 404`) -- and serves a "Page not found" shell. There is no
+    // virtualized list to page through, so the loop below and its 3s settle
+    // would be four seconds spent scrolling a placeholder.
+    if (navStatus !== null && navStatus >= 400) return { navStatus, responses: recorded }
 
     let exhausted = false
     for (let i = 0; i < SCROLL_MAX_ITERATIONS && !exhausted; i++) {
@@ -137,7 +170,7 @@ export async function recordResponses(page: Page, url: string, navTimeoutMs: num
     page.off('response', onResponse)
   }
 
-  return recorded
+  return { navStatus, responses: recorded }
 }
 
 function entityUrl(kind: 'track' | 'album' | 'playlist', id: string): string {
@@ -167,18 +200,35 @@ async function runExtraction(
 ): Promise<Track | Album | Playlist> {
   const lease = await pool.acquire()
   try {
-    const recorded = await recordResponses(lease.page, entityUrl(kind, id), cfg.navTimeoutMs)
+    const capture = await recordResponses(lease.page, entityUrl(kind, id), cfg.navTimeoutMs)
+    const { navStatus, responses: recorded } = capture
+
+    // Absence has to be POSITIVELY evidenced, and the navigation status is the
+    // only thing that carries it: a dead entity records no JSON at all, which
+    // is indistinguishable from a capture that simply saw nothing. Getting
+    // this backwards answered 404 for a live playlist and negative-cached it.
+    if (navStatus !== null && navStatus >= 400) {
+      throw new NotFoundError(
+        `no ${kind} found for id ${id} -- Spotify answered the page with ${navStatus}`,
+        evidenceFrom(capture),
+      )
+    }
+
     const result = normalizeByKind(kind, recorded, id)
 
     if (result === null) {
-      throw new NotFoundError(`no ${kind} found for id ${id}`, evidenceFrom(recorded))
+      throw new ExtractionSilentError(
+        `${kind} ${id} loaded with ${navStatus ?? 'an unreported status'} but nothing on the page matched ` +
+          `-- extraction has stopped recognising Spotify's shape`,
+        evidenceFrom(capture),
+      )
     }
     // Navigated fine but zero tracks is not a 404 -- normalizeByKind returns
     // null for that. It means extraction stopped matching Spotify's page.
     if ((result.type === 'album' || result.type === 'playlist') && result.tracks.length === 0) {
       throw new ExtractionEmptyError(
         `${kind} ${id} navigated successfully but yielded zero tracks -- extraction likely stopped matching Spotify's page`,
-        evidenceFrom(recorded),
+        evidenceFrom(capture),
       )
     }
     // Compare Spotify's declared total against `seen` -- raw items present
@@ -193,7 +243,7 @@ async function runExtraction(
         throw new ExtractionIncompleteError(
           `album ${id} saw ${seen} of ${declared} declared tracks across recorded responses ` +
           `(${result.tracks.length} well-formed) -- extraction was incomplete`,
-          evidenceFrom(recorded),
+          evidenceFrom(capture),
         )
       }
     }
@@ -204,7 +254,7 @@ async function runExtraction(
         throw new ExtractionIncompleteError(
           `playlist ${id} saw ${seen} of ${declared} declared tracks across recorded responses ` +
           `(${result.tracks.length} well-formed) -- extraction was incomplete`,
-          evidenceFrom(recorded),
+          evidenceFrom(capture),
         )
       }
     }
