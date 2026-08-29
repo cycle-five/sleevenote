@@ -6,6 +6,7 @@ export type Config = {
   navTimeoutMs: number
   produceBudgetMs: number
   failureRelayTtl: number
+  logLevel: string
   ttl: { track: number; album: number; playlist: number; negative: number }
 }
 
@@ -32,6 +33,10 @@ export const DEFAULT_FAILURE_TTL_SECONDS = 5
 export function loadConfig(env: NodeJS.ProcessEnv): Config {
   return {
     port: num(env.PORT, 3000),
+    // The service used to construct Fastify with no logger at all, which made
+    // `app.log` a no-op -- so a deployed instance emitted NOTHING, not even
+    // its own "listening" line, and a failing lookup left no trace to read.
+    logLevel: env.LOG_LEVEL ?? 'info',
     redisUrl: env.REDIS_URL ?? 'redis://127.0.0.1:6379',
     poolSize: num(env.POOL_SIZE, 2),
     contextMaxUses: num(env.CONTEXT_MAX_USES, 50),

@@ -17,16 +17,67 @@ import type { Album, Playlist, Recorded, Track } from './types.js'
 // page. Confusing them is how the prior art died -- silently. None of the
 // latter three may ever populate the cache.
 // See docs/design-notes.md ("The four extraction failures").
-export class NotFoundError extends Error {}
-export class ExtractionEmptyError extends Error {}
+/**
+ * What the page actually gave us, carried on the error so the HTTP layer can
+ * log it without reproducing the extraction.
+ *
+ * `recorded: 0` is the signal that matters: it means the capture saw no JSON
+ * at all, which is our failure and not evidence that the entity is absent.
+ */
+export type ExtractionEvidence = {
+  /** JSON responses captured during the page load. */
+  recorded: number
+  /** Distinct HTTP statuses among them, ascending. */
+  statuses: number[]
+  /** Distinct response paths, bounded; full URLs are long and repetitive. */
+  paths: string[]
+}
+
+const MAX_EVIDENCE_PATHS = 8
+
+/** Summarise a capture for logging. Pure, so the summary is testable alone. */
+export function evidenceFrom(recorded: Recorded[]): ExtractionEvidence {
+  const statuses = [...new Set(recorded.map((r) => r.status))].sort((a, b) => a - b)
+  const paths = [
+    ...new Set(
+      recorded.map((r) => {
+        try {
+          return new URL(r.url).pathname
+        } catch {
+          // An unparseable URL is itself worth seeing, so keep it rather than
+          // dropping the response from the count's explanation.
+          return r.url
+        }
+      }),
+    ),
+  ].slice(0, MAX_EVIDENCE_PATHS)
+  return { recorded: recorded.length, statuses, paths }
+}
+
+/** Carries [`ExtractionEvidence`] where the thrower had it to hand. */
+export class ExtractionError extends Error {
+  constructor(
+    message: string,
+    readonly evidence?: ExtractionEvidence,
+  ) {
+    super(message)
+    this.name = new.target.name
+  }
+}
+
+export class NotFoundError extends ExtractionError {}
+export class ExtractionEmptyError extends ExtractionError {}
 
 // A partial recovery that still returns *some* tracks, which a bare
 // `tracks.length === 0` check cannot see.
-export class ExtractionIncompleteError extends Error {}
+export class ExtractionIncompleteError extends ExtractionError {}
 
 // A class, not a message: the HTTP layer maps 504 by `instanceof`, so editing
 // the wording below cannot silently downgrade every timeout to a generic 502.
-export class ExtractionTimeoutError extends Error {}
+// Carries no evidence -- the budget rejects from outside the extraction, with
+// no `recorded` in hand -- but shares the base so every extraction failure
+// produces exactly one diagnostic line.
+export class ExtractionTimeoutError extends ExtractionError {}
 
 const SCROLL_MAX_ITERATIONS = 200
 const SCROLL_STEP_DELAY_MS = 350
@@ -120,13 +171,14 @@ async function runExtraction(
     const result = normalizeByKind(kind, recorded, id)
 
     if (result === null) {
-      throw new NotFoundError(`no ${kind} found for id ${id}`)
+      throw new NotFoundError(`no ${kind} found for id ${id}`, evidenceFrom(recorded))
     }
     // Navigated fine but zero tracks is not a 404 -- normalizeByKind returns
     // null for that. It means extraction stopped matching Spotify's page.
     if ((result.type === 'album' || result.type === 'playlist') && result.tracks.length === 0) {
       throw new ExtractionEmptyError(
         `${kind} ${id} navigated successfully but yielded zero tracks -- extraction likely stopped matching Spotify's page`,
+        evidenceFrom(recorded),
       )
     }
     // Compare Spotify's declared total against `seen` -- raw items present
@@ -141,6 +193,7 @@ async function runExtraction(
         throw new ExtractionIncompleteError(
           `album ${id} saw ${seen} of ${declared} declared tracks across recorded responses ` +
           `(${result.tracks.length} well-formed) -- extraction was incomplete`,
+          evidenceFrom(recorded),
         )
       }
     }
@@ -151,6 +204,7 @@ async function runExtraction(
         throw new ExtractionIncompleteError(
           `playlist ${id} saw ${seen} of ${declared} declared tracks across recorded responses ` +
           `(${result.tracks.length} well-formed) -- extraction was incomplete`,
+          evidenceFrom(recorded),
         )
       }
     }
