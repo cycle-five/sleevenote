@@ -66,7 +66,7 @@ describe('request logging', () => {
   // real absence from a capture that saw nothing, WITHOUT reproducing it.
   it('logs the extraction evidence when nothing matched', async () => {
     const log = recordingLogger()
-    const evidence = { recorded: 0, statuses: [], paths: [] }
+    const evidence = { navStatus: 200, recorded: 0, statuses: [], paths: [] }
     const app = server(async () => {
       throw new NotFoundError('no track found for id abc', evidence)
     }, log)
@@ -81,7 +81,7 @@ describe('request logging', () => {
 
   it('logs evidence for extraction failures other than not-found too', async () => {
     const log = recordingLogger()
-    const evidence = { recorded: 3, statuses: [200], paths: ['/pathfinder/v2/query'] }
+    const evidence = { navStatus: 200, recorded: 3, statuses: [200], paths: ['/pathfinder/v2/query'] }
     const app = server(async () => {
       throw new ExtractionEmptyError('zero tracks', evidence)
     }, log)
@@ -105,11 +105,14 @@ describe('evidenceFrom', () => {
   const rec = (url: string, status: number): Recorded => ({ url, status, body: {} })
 
   it('counts responses and reports distinct statuses in ascending order', () => {
-    const e = evidenceFrom([
-      rec('https://api-partner.spotify.com/pathfinder/v2/query', 200),
-      rec('https://api-partner.spotify.com/pathfinder/v2/query', 404),
-      rec('https://open.spotify.com/x.json', 200),
-    ])
+    const e = evidenceFrom({
+      navStatus: 200,
+      responses: [
+        rec('https://api-partner.spotify.com/pathfinder/v2/query', 200),
+        rec('https://api-partner.spotify.com/pathfinder/v2/query', 404),
+        rec('https://open.spotify.com/x.json', 200),
+      ],
+    })
     expect(e.recorded).toBe(3)
     expect(e.statuses).toEqual([200, 404])
   })
@@ -117,18 +120,23 @@ describe('evidenceFrom', () => {
   // Zero recorded responses is the signature of a capture that saw nothing --
   // the case being misreported as "this entity does not exist".
   it('reports an empty capture distinctly from one that recorded responses', () => {
-    expect(evidenceFrom([])).toEqual({ recorded: 0, statuses: [], paths: [] })
+    expect(evidenceFrom({ navStatus: 200, responses: [] })).toEqual({
+      navStatus: 200,
+      recorded: 0,
+      statuses: [],
+      paths: [],
+    })
   })
 
   it('reports distinct paths, not full URLs, and bounds how many', () => {
     const many = Array.from({ length: 20 }, (_, i) => rec(`https://x.test/p${i}?q=1`, 200))
-    const e = evidenceFrom(many)
+    const e = evidenceFrom({ navStatus: 200, responses: many })
     expect(e.paths.length).toBeLessThanOrEqual(8)
     expect(e.paths[0]).toBe('/p0')
   })
 
   it('does not discard a response whose URL will not parse', () => {
-    const e = evidenceFrom([rec('not a url', 200)])
+    const e = evidenceFrom({ navStatus: 404, responses: [rec('not a url', 200)] })
     expect(e.recorded).toBe(1)
     expect(e.paths).toEqual(['not a url'])
   })

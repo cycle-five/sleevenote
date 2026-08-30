@@ -9,25 +9,67 @@ this way" is the part that stops someone re-trying it.
 
 ---
 
-## The four extraction failures
+## The five extraction failures
 
-`src/extract.ts` defines four error classes and `src/server.ts` maps them to
-four different responses. Keeping them apart is the whole point of this
+`src/extract.ts` defines five error classes and `src/server.ts` maps them to
+five different responses. Keeping them apart is the whole point of this
 service — the prior art it replaces failed by returning nothing that looked
 like an error, so nobody noticed for a long time.
 
 | Error | Means | HTTP | Cached? |
 |---|---|---|---|
-| `NotFoundError` | The entity does not exist | 404 | Yes, negative-cached |
-| `ExtractionEmptyError` | Navigated fine, zero tracks came back | 502 | **Never** |
+| `NotFoundError` | Spotify answered the page non-2xx: the entity is gone | 404 | Yes, negative-cached |
+| `ExtractionSilentError` | The page loaded, and nothing on it matched | 502 | **Never** |
+| `ExtractionEmptyError` | Found the entity, zero tracks in it | 502 | **Never** |
 | `ExtractionIncompleteError` | Some tracks came back, fewer than declared | 502 | **Never** |
 | `ExtractionTimeoutError` | The whole call exceeded `produceBudgetMs` | 504 | **Never** |
 
-The three that are never cached all mean the same underlying thing: *our
+The four that are never cached all mean the same underlying thing: *our
 extraction stopped matching Spotify's page*. They are kept apart because they
-are different diagnoses. "Recovered zero tracks" is a total discriminator
-failure; "recovered 140 of 150" is a pagination failure. A dashboard that
-cannot tell them apart cannot tell you which one broke.
+are different diagnoses. "Recognised nothing at all" is a wholesale shape
+change; "recovered zero tracks" is a broken list discriminator; "recovered 140
+of 150" is a pagination failure. A dashboard that cannot tell them apart cannot
+tell you which one broke.
+
+## Absence has to be evidenced
+
+`ExtractionSilentError` exists because the first four were not enough, and the
+gap was load-bearing. `normalizeByKind` returning `null` used to become a
+`NotFoundError` — 404, negative-cached for `TTL_NEGATIVE`. But `null` covers
+two unrelated situations: Spotify says the entity is gone, and *we recognised
+nothing on a page that loaded fine*. A live playlist was served as "not found"
+because the second was reported as the first, and the negative cache then kept
+serving it that way after extraction had recovered.
+
+The natural discriminator — "did we capture any JSON?" — does not work.
+Measured against the real site, a dead entity records **no JSON responses at
+all**, which is byte-for-byte the evidence a silent capture leaves:
+
+```
+playlist/zzzzzzzzzzzzzzzzzzzzzz  →  {"recorded":0,"statuses":[],"paths":[]}
+```
+
+The navigation status does work, because it is *positive* evidence rather than
+the absence of it. Spotify answers the document itself for a dead entity:
+
+| request | navigation status | page title |
+|---|---|---|
+| dead track | 404 | "Page not found" |
+| dead album | 404 | "Page not found" |
+| dead playlist | **400** | "Page not available" |
+| live entity | 200 | the real title |
+
+Hence `navStatus >= 400`, never `=== 404`: a dead playlist answers **400**, and
+a rule written against 404 alone would classify every dead playlist as a
+scraper failure.
+
+Two things fall out of this beyond correctness. A dead entity is now rejected
+straight after navigation, skipping a scroll loop and its three-second settle
+on a page with no list to page through — measured at 1040ms against 4146ms.
+And the failure is finally *counted*: `recordFailureMetrics` returns early for
+`NotFoundError`, so while a silent extraction was reported as absence, total
+extraction failure recorded **zero** failures while answering 404 to
+everything.
 
 `ExtractionTimeoutError` is a class rather than a distinguished message for a
 concrete reason: the HTTP layer used to match a 504 by regex-testing the error
