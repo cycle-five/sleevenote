@@ -346,3 +346,64 @@ rejected from outside the extraction and never had one.
 Splitting those two cases onto different status codes is the next change. This
 one exists so that split is written against observed evidence rather than a
 guess about what Spotify's page emits for a deleted id.
+
+## Wait for the data, not for the page to go quiet
+
+`recordResponses` navigates, then scrolls, then settles for three seconds, and
+returns whatever JSON it captured along the way. For a long time that treated
+`networkidle` plus the settle as a stand-in for "the entity query has arrived".
+It is not one, and a production log caught the difference:
+
+```json
+{"kind":"playlist","id":"6FPDTIEcrb6EXUuWX2kBJz","error":"ExtractionSilentError",
+ "evidence":{"navStatus":200,"recorded":21,"statuses":[200],
+   "paths":["/cdn/generated-locales/web-player/en.aab0b7e4.json","/api/token","/",
+            "/api/114855/envelope/","/v1/clienttoken",
+            "/remote-config-resolver/v3/unauth/configuration",
+            "/gabo-receiver-service/public/v3/events","/consent/50da44be-.../....json"]}}
+```
+
+Twenty-one responses captured, and not one of them the pathfinder query. Every
+path is first-run bootstrap: locale bundle, access token, client token, remote
+config, telemetry, consent. That is a **cold browser context** completing its
+handshake, and it consumed the entire window the extraction was watching. The
+next request, on the now-warm context, took *longer* — 11.4s against 5.3s — and
+succeeded, because it went straight to fetching data.
+
+This is why `/spotify` "failed the first time and worked the second". It was
+never random: `CONTEXT_MAX_USES` recycles contexts, so the first extraction
+after every recycle, and after every restart, met a cold context.
+
+The fix is to wait for the response the normalizers actually read —
+`PATHFINDER_URL`, exported from `normalize.ts` for exactly this — before
+entering the scroll loop. The promise is created *before* `goto`, so a response
+that arrives mid-navigation still counts; waiting on it afterwards would
+otherwise hang for the full timeout.
+
+`ENTITY_DATA_TIMEOUT_MS` bounds that wait, and is deliberately its own knob at
+15s rather than borrowing the 45s `NAV_TIMEOUT_MS`. The wait covers the gap
+between "the page went quiet" and "the data arrived"; a page that will never
+produce entity data must still be able to say so quickly, and reusing the nav
+timeout made every genuinely silent extraction cost 45 seconds. Three existing
+tests timed out the moment it did, which is how that got caught.
+
+### Warming contexts was tried, measured, and removed
+
+The obvious companion fix is to warm each context at creation — load
+`open.spotify.com` once so the bootstrap happens off the request path. It was
+implemented and then deleted, because the measurements did not support it:
+
+| | pool creation | first extract | total |
+|---|---|---|---|
+| warmed | 817 / 719 ms | 7733 / 7617 ms | 8550 / 8336 ms |
+| cold | 120 / 66 ms | 8147 / 8292 ms | 8267 / 8358 ms |
+
+It saved ~600ms on the first extraction and cost ~750ms to perform — a wash.
+Worse, the cost lands in the wrong place: `recycle()` runs inside
+`releaseRecord`, which `runExtraction` awaits in its `finally`, so warming
+would be paid by the *recycling request itself*, with the warm-up timeout as a
+worst-case tail. It moves latency onto the request path rather than off it.
+
+The wait above is sufficient on its own: with it, a cold context's first
+extraction succeeds. If warming is ever revisited, it needs to happen somewhere
+that is genuinely off the request path.

@@ -2,6 +2,7 @@ import type { Page, Response } from 'playwright'
 import type { Pool } from './browser.js'
 import type { Config } from './config.js'
 import {
+  PATHFINDER_URL,
   albumItemCount,
   albumTotalCount,
   normalizeAlbum,
@@ -103,6 +104,14 @@ export class ExtractionIncompleteError extends ExtractionError {}
 // produces exactly one diagnostic line.
 export class ExtractionTimeoutError extends ExtractionError {}
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    // Unref'd so a pending wait cannot hold the process open at shutdown.
+    const t = setTimeout(resolve, ms)
+    if (typeof t === 'object' && 'unref' in t) t.unref()
+  })
+}
+
 const SCROLL_MAX_ITERATIONS = 200
 const SCROLL_STEP_DELAY_MS = 350
 const SCROLL_SETTLE_MS = 3_000
@@ -119,13 +128,27 @@ const SCROLL_SETTLE_MS = 3_000
  * A track page needs no special case: nothing matches the container
  * heuristic, so the loop exits on its first iteration.
  */
-export async function recordResponses(page: Page, url: string, navTimeoutMs: number): Promise<Capture> {
+export async function recordResponses(
+  page: Page,
+  url: string,
+  navTimeoutMs: number,
+  entityDataTimeoutMs: number,
+): Promise<Capture> {
   const recorded: Recorded[] = []
   let navStatus: number | null = null
+
+  // Resolved by the first pathfinder response. Created BEFORE `goto` on
+  // purpose: a response that arrives while we are still navigating has to
+  // count, or waiting on it afterwards would hang for the full timeout.
+  let sawEntityData = (): void => {}
+  const entityData = new Promise<void>((resolve) => {
+    sawEntityData = resolve
+  })
 
   const onResponse = async (response: Response): Promise<void> => {
     const contentType = response.headers()['content-type'] ?? ''
     if (!contentType.includes('json')) return
+    if (response.url().startsWith(PATHFINDER_URL)) sawEntityData()
     try {
       recorded.push({ url: response.url(), status: response.status(), body: await response.json() })
     } catch {
@@ -144,6 +167,19 @@ export async function recordResponses(page: Page, url: string, navTimeoutMs: num
     // virtualized list to page through, so the loop below and its 3s settle
     // would be four seconds spent scrolling a placeholder.
     if (navStatus !== null && navStatus >= 400) return { navStatus, responses: recorded }
+
+    // Wait for the data itself, not for a proxy for it.
+    //
+    // `networkidle` above plus the scroll and settle below is a GUESS that the
+    // entity query has already landed. On a cold context that guess is wrong:
+    // the whole window goes on bootstrap and the query fires after we have
+    // stopped looking, so normalize sees nothing and the extraction is
+    // reported as silent. Waiting for the response every normalizer reads is
+    // the difference between "probably arrived" and "arrived".
+    //
+    // Bounded and non-fatal: if it never comes, carry on and let the
+    // normalizers report what they actually found.
+    await Promise.race([entityData, sleep(entityDataTimeoutMs)])
 
     let exhausted = false
     for (let i = 0; i < SCROLL_MAX_ITERATIONS && !exhausted; i++) {
@@ -200,7 +236,12 @@ async function runExtraction(
 ): Promise<Track | Album | Playlist> {
   const lease = await pool.acquire()
   try {
-    const capture = await recordResponses(lease.page, entityUrl(kind, id), cfg.navTimeoutMs)
+    const capture = await recordResponses(
+      lease.page,
+      entityUrl(kind, id),
+      cfg.navTimeoutMs,
+      cfg.entityDataTimeoutMs,
+    )
     const { navStatus, responses: recorded } = capture
 
     // Absence has to be POSITIVELY evidenced, and the navigation status is the
