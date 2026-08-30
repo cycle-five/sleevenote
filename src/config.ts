@@ -7,6 +7,7 @@ export type Config = {
   produceBudgetMs: number
   failureRelayTtl: number
   logLevel: string
+  entityDataTimeoutMs: number
   ttl: { track: number; album: number; playlist: number; negative: number }
 }
 
@@ -37,6 +38,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     // `app.log` a no-op -- so a deployed instance emitted NOTHING, not even
     // its own "listening" line, and a failing lookup left no trace to read.
     logLevel: env.LOG_LEVEL ?? 'info',
+    // How long to wait for the entity query AFTER the page looks settled.
+    // Deliberately far below navTimeoutMs: this covers the gap between "the
+    // page went idle" and "the data arrived", measured at >5s on a cold
+    // context. Reusing the 45s nav timeout would make every genuinely silent
+    // extraction cost 45s before it could say so.
+    entityDataTimeoutMs: num(env.ENTITY_DATA_TIMEOUT_MS, 15_000),
     redisUrl: env.REDIS_URL ?? 'redis://127.0.0.1:6379',
     poolSize: num(env.POOL_SIZE, 2),
     contextMaxUses: num(env.CONTEXT_MAX_USES, 50),

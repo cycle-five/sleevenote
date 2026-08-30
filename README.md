@@ -86,6 +86,7 @@ copy-pasteable version with fuller comments:
 | `POOL_SIZE` | `2` | browser contexts kept warm; excess requests queue, they don't fail |
 | `CONTEXT_MAX_USES` | `50` | extractions served before a context is recycled |
 | `NAV_TIMEOUT_MS` | `45000` | cap on a single page navigation |
+| `ENTITY_DATA_TIMEOUT_MS` | `15000` | how long to wait for Spotify's entity query after the page looks settled. Deliberately far below `NAV_TIMEOUT_MS`: it covers the gap between "went idle" and "data arrived", so reusing the nav timeout would make every genuinely silent extraction cost 45s before it could say so |
 | `PRODUCE_BUDGET_MS` | `150000` | cap on one whole extraction; also sets the cache's single-flight lock TTL (see `src/config.ts`) |
 | `TTL_TRACK` | `2592000` (30d) | track cache TTL, in seconds |
 | `TTL_ALBUM` | `2592000` (30d) | album cache TTL, in seconds |

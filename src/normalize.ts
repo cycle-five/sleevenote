@@ -1,6 +1,11 @@
 import type { Album, Artist, Playlist, Recorded, Track } from './types.js'
 
-const PATHFINDER_URL = 'https://api-partner.spotify.com/pathfinder/v2/query'
+/**
+ * The one response extraction cannot proceed without: every entity kind is
+ * normalized out of these. Exported so `extract.ts` can WAIT for it rather
+ * than guess, via networkidle, that it has already arrived.
+ */
+export const PATHFINDER_URL = 'https://api-partner.spotify.com/pathfinder/v2/query'
 
 // --- generic helpers -------------------------------------------------------
 

@@ -10,10 +10,14 @@ import {
   ExtractionIncompleteError,
   ExtractionSilentError,
 } from '../src/extract.js'
-import { normalizePlaylist, playlistItemCount, playlistTotalCount } from '../src/normalize.js'
+import {
+  PATHFINDER_URL,
+  normalizePlaylist,
+  playlistItemCount,
+  playlistTotalCount,
+} from '../src/normalize.js'
 import type { Recorded } from '../src/types.js'
 
-const PATHFINDER_URL = 'https://api-partner.spotify.com/pathfinder/v2/query'
 
 /** A `content.items[]` entry shaped like a real playlist track item. */
 function playlistItem(trackId: string, name: string) {
@@ -27,6 +31,18 @@ function playlistItem(trackId: string, name: string) {
         trackDuration: { totalMilliseconds: 200_000 },
       },
     },
+  }
+}
+
+/** The `trackUnion` shape normalizeTrack reads, matching the track test above. */
+function trackUnionFor(id: string, name: string) {
+  return {
+    __typename: 'Track',
+    name,
+    uri: `spotify:track:${id}`,
+    firstArtist: { items: [{ uri: 'spotify:artist:a1', profile: { name: 'Test Artist' } }] },
+    otherArtists: { items: [] },
+    duration: { totalMilliseconds: 123456 },
   }
 }
 
@@ -52,7 +68,7 @@ describe('recordResponses', () => {
       return route.fulfill({ status: 200, contentType: 'text/plain', body: 'not json' })
     })
 
-    const capture = await recordResponses(lease.page, 'https://fake.test/page', 10_000)
+    const capture = await recordResponses(lease.page, 'https://fake.test/page', 10_000, 500)
     await lease.release()
 
     const bodies = capture.responses.map((r) => r.body)
@@ -283,7 +299,9 @@ describe('extract', () => {
   // served a live playlist as "not found" -- and, being negative-cached, kept
   // serving it that way for TTL_NEGATIVE.
   it('throws ExtractionSilentError, not NotFoundError, and still releases the lease, when the page loaded fine but nothing matched', async () => {
-    const nCfg = loadConfig({ POOL_SIZE: '1' })
+    // Short entity-data bound: no query is ever issued here, and the point is
+    // that a silent extraction reports quickly rather than burning the wait.
+    const nCfg = loadConfig({ POOL_SIZE: '1', ENTITY_DATA_TIMEOUT_MS: '500' })
     const nPool = await createPool(nCfg)
     try {
       const id = 'notFoundId'
@@ -307,6 +325,44 @@ describe('extract', () => {
     }
   }, 20_000)
 
+  // The production failure, reproduced: a cold context spends the whole
+  // networkidle/scroll/settle window on bootstrap and the entity query fires
+  // AFTER it. Guessing via networkidle recorded 21 responses, none of them the
+  // pathfinder query, and reported a live playlist as a silent extraction.
+  it('waits for the entity query when it arrives after the page would otherwise be considered settled', async () => {
+    const lCfg = loadConfig({ POOL_SIZE: '1' })
+    const lPool = await createPool(lCfg)
+    try {
+      const id = 'lateTrackId'
+      const page = await routedPage(lPool)
+
+      // The page settles immediately -- nothing in flight -- and only issues
+      // the entity query afterwards, exactly as a cold context does while it
+      // works through /api/token, /v1/clienttoken, remote-config and consent.
+      // networkidle + scroll + the 3s settle all elapse before the query.
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: `<html><body>loading<script>setTimeout(() => fetch('${PATHFINDER_URL}'), 5000)</script></body></html>`,
+        }),
+      )
+      await page.route('https://api-partner.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ data: { trackUnion: trackUnionFor(id, 'Late Arrival') } }),
+        }),
+      )
+
+      const track = await extract('track', id, lPool, lCfg)
+      expect(track.type).toBe('track')
+      expect(track.name).toBe('Late Arrival')
+    } finally {
+      await lPool.close()
+    }
+  }, 60_000)
+
   // Measured against the real site: a dead track or album answers 404, and a
   // dead playlist answers 400 -- so the test is "not ok", never "=== 404".
   it.each([
@@ -328,7 +384,7 @@ describe('extract', () => {
   }, 20_000)
 
   it('carries the navigation status as evidence, so the two cases are distinguishable in a log', async () => {
-    const eCfg = loadConfig({ POOL_SIZE: '1' })
+    const eCfg = loadConfig({ POOL_SIZE: '1', ENTITY_DATA_TIMEOUT_MS: '500' })
     const ePool = await createPool(eCfg)
     try {
       const page = await routedPage(ePool)

@@ -67,7 +67,7 @@ describe.skipIf(!LIVE)('live extraction against real Spotify', () => {
     const lease = await pool.acquire()
     let recorded: Recorded[]
     try {
-      recorded = (await recordResponses(lease.page, `https://open.spotify.com/album/${id}`, cfg.navTimeoutMs))
+      recorded = (await recordResponses(lease.page, `https://open.spotify.com/album/${id}`, cfg.navTimeoutMs, cfg.entityDataTimeoutMs))
         .responses
     } finally {
       await lease.release()
