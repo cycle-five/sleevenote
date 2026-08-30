@@ -366,9 +366,50 @@ It is not one, and a production log caught the difference:
 Twenty-one responses captured, and not one of them the pathfinder query. Every
 path is first-run bootstrap: locale bundle, access token, client token, remote
 config, telemetry, consent. That is a **cold browser context** completing its
-handshake, and it consumed the entire window the extraction was watching. The
-next request, on the now-warm context, took *longer* — 11.4s against 5.3s — and
-succeeded, because it went straight to fetching data.
+handshake, and it consumed the entire window the extraction was watching.
+
+### The failing request was FASTER, and that is not a paradox
+
+The cold request took 5.3s and failed; the next one, on the warm context, took
+11.4s and succeeded. That looks backwards until you notice that **the failing
+path is systematically cheaper**, in two of the three phases:
+
+| phase | failed | succeeded |
+|---|---|---|
+| `goto` → networkidle | shorter: the entity query, and everything it cascades, never happened | longer: real fetch, then render |
+| scroll loop | **1 iteration, ~350ms** | **4 iterations, ~1420ms** |
+| settle | 3000ms | 3000ms |
+| total | **5286ms** | **11415ms** |
+
+The scroll loop is the clean half. It hunts for a scrollable container and
+gives up on the first pass if there is not one:
+
+```js
+if (!best) return true   // nothing scrollable -> exhausted -> loop exits
+```
+
+No data means nothing renders, nothing renders means nothing scrolls, and the
+loop costs one 350ms iteration instead of four. Measured against the live site:
+a rendered playlist gives 4 iterations / 1421ms, a dead page 1 / 353ms.
+
+Warmth's own cost points the *other* way, which is worth knowing before
+reaching for it as an explanation. On a host where the cold context does get
+its data in time, cold is **slower**, and the whole difference sits in `goto`:
+
+| | goto | scroll | total |
+|---|---|---|---|
+| cold, succeeded | 4152ms | 4 iters / 1417ms | 8569ms |
+| warm, succeeded | 2736ms | 4 iters / 1417ms | 7153ms |
+
+So there are two independent effects: warmth is worth about 1.4s of `goto`, and
+success versus failure is worth the scroll loop plus the entire data cascade.
+In production the second dominated and inverted the ordering.
+
+**Duration is not a signal of success.** That is why the earlier failures at
+5.7s and 6.3s sat below the successes at 8.5-13s and looked like a pattern, and
+it is why any "call back in N seconds" estimate has to be computed over
+successful extractions only -- including failures drags the number down exactly
+when the service is degrading.
 
 This is why `/spotify` "failed the first time and worked the second". It was
 never random: `CONTEXT_MAX_USES` recycles contexts, so the first extraction
