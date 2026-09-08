@@ -439,6 +439,49 @@ describe('normalizePlaylist -- a real user playlist with mixed item kinds', () =
   })
 })
 
+describe('completeness fields', () => {
+  const id = 'complete-test'
+
+  it('reports a complete album as complete, with the declared total', async () => {
+    // The recorded album fixture is id 6ymZBbRSmzAvoSGmwAFoxm; the rest of
+    // this file uses that pairing.
+    const album = normalizeAlbum(await fixture('album'), '6ymZBbRSmzAvoSGmwAFoxm')!
+    expect(album.declaredItems).toBe(album.tracks.length + album.unresolvedItems)
+    expect(album.complete).toBe(true)
+  })
+
+  it('marks a short capture incomplete', () => {
+    // Declares three, records one. This is what a truncated capture is.
+    const recorded = [albumEntityResponse(id, 3, [albumTrackItem('t1', 'One', 1)])]
+    const album = normalizeAlbum(recorded, id)!
+    expect(album.declaredItems).toBe(3)
+    expect(album.tracks).toHaveLength(1)
+    expect(album.complete).toBe(false)
+  })
+
+  it('counts a validation-dropped item as seen, not as a shortfall', () => {
+    // The rule design-notes calls load-bearing: an item normalize refuses
+    // still COUNTS as seen. Comparing declaredItems against tracks.length
+    // would call this *complete* extraction incomplete -- and because that
+    // used to throw an error that was never cached, it failed forever.
+    const nameless = albumTrackItem('t2', '', 2)
+    const recorded = [albumEntityResponse(id, 2, [albumTrackItem('t1', 'One', 1), nameless])]
+    const album = normalizeAlbum(recorded, id)!
+    expect(album.tracks).toHaveLength(1)
+    expect(album.unresolvedItems).toBe(1)
+    expect(album.complete).toBe(true)
+  })
+
+  it('is complete when Spotify declared no total, because we cannot tell', () => {
+    const recorded = [albumEntityResponse(id, 1, [albumTrackItem('t1', 'One', 1)])]
+    // Strip the declared total the way a page that never reported one leaves it.
+    delete ((recorded[0]!.body as any).data.albumUnion.tracksV2).totalCount
+    const album = normalizeAlbum(recorded, id)!
+    expect(album.declaredItems).toBeNull()
+    expect(album.complete).toBe(true)
+  })
+})
+
 /** First `itemV2.data` in the recorded stream whose `__typename` matches. */
 function findItemData(recorded: Recorded[], typename: string): Record<string, unknown> | null {
   for (const r of recorded as unknown as Record<string, any>[]) {
