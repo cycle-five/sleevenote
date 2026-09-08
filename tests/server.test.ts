@@ -43,6 +43,13 @@ function server(extract: any, store = new MemoryStore()) {
   return buildServer({ cfg, store, pool: fakePool as any, extract })
 }
 
+// Fan-out is deliberately not awaited into the response path, so it can still
+// be running when inject() resolves. Anything asserting on what it did (or on
+// what it threw) has to give it a turn first.
+function settle(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 10))
+}
+
 const TRACK = { id: 'abc', type: 'track', name: 'Hideaway', artists: [{ name: 'Kiesza', id: null }], album: null, durationMs: null, url: 'https://open.spotify.com/track/abc' }
 
 function aTrack() {
@@ -686,5 +693,51 @@ describe('fan-out', () => {
     const raw = await store.get(cacheKey('track', 't0'))
     expect(raw).not.toBeNull()
     expect(JSON.parse(raw!).value.name).toBe('Track 0')
+  })
+
+  // Fan-out is a consequence of having just PRODUCED a listing, not of having
+  // answered a request for one. Ungated, a cache hit on a 50-track playlist
+  // re-issued 50 sequential Redis SETs writing back what it had just read,
+  // on every request for the whole 4-hour TTL. `hit === 'miss'` is exactly
+  // "we just produced and wrote this": produceAndCache returns 'miss' only
+  // after produce() resolved.
+  it('fans out on a produce, not again on every cache hit', async () => {
+    const store = new MemoryStore()
+    let trackWrites = 0
+    const originalSet = store.set.bind(store)
+    store.set = async (key: string, value: string, ttlSeconds: number) => {
+      if (key.startsWith(cacheKey('track', ''))) trackWrites++
+      return originalSet(key, value, ttlSeconds)
+    }
+    const app = server(async () => albumWithTwoTracks(), store)
+
+    const first = await app.inject({ url: '/v1/album/al1' })
+    expect(first.headers['x-cache']).toBe('miss')
+    await settle()
+    expect(trackWrites).toBe(2)
+
+    const second = await app.inject({ url: '/v1/album/al1' })
+    expect(second.headers['x-cache']).toBe('fresh')
+    await settle()
+    expect(trackWrites).toBe(2)
+  })
+
+  // `tracksToCache(entity)` used to sit in the `for...of` head, OUTSIDE the
+  // try. Fan-out is invoked with `void`, so anything thrown there is an
+  // unhandled rejection, and src/index.ts installs no `unhandledRejection`
+  // handler -- Node's default is to terminate the process. The value is only
+  // cast, never validated (readEntry tolerates corrupt JSON, not
+  // wrong-shaped JSON), so a listing with no `tracks` array is reachable and
+  // took the whole service down. Vitest reports an unhandled rejection as a
+  // run failure, which is what makes this a regression test and not a
+  // tautology.
+  it('does not crash the process on a listing with no track list', async () => {
+    const store = new MemoryStore()
+    const shapeless = { id: 'abc', type: 'playlist', name: 'A Playlist', declaredItems: null }
+    const app = server(async () => shapeless, store)
+    const res = await app.inject({ url: '/v1/playlist/abc' })
+    expect(res.statusCode).toBe(200)
+    // The rejection, if there is one, happens after the response resolves.
+    await settle()
   })
 })

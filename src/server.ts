@@ -196,7 +196,23 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   // of them may reach the caller -- see the call site's comment.
   async function fanOutTracks(entity: Album | Playlist): Promise<void> {
     const storedAt = now()
-    for (const track of tracksToCache(entity)) {
+    // Inside the try, not in the `for...of` head. This call is invoked with
+    // `void`, so anything it throws becomes an unhandled rejection, and
+    // src/index.ts installs no handler for those -- Node terminates the
+    // process. `tracksToCache` reads `entity.tracks` and each `track.url`,
+    // and the value reaching it is only cast, never validated (readEntry
+    // tolerates corrupt JSON, not wrong-shaped JSON), so a listing without a
+    // `tracks` array is a crash and not a skipped optimisation.
+    let tracks: Track[]
+    try {
+      tracks = tracksToCache(entity)
+    } catch (err) {
+      // warn, not debug: a listing this malformed is a shape change or a
+      // poisoned entry, not the ordinary "one write didn't land" below.
+      fastify.log.warn({ err }, 'fan-out skipped: listing had no usable track list')
+      return
+    }
+    for (const track of tracks) {
       try {
         await store.set(cacheKey('track', track.id), JSON.stringify({ value: track, storedAt }), cfg.ttl.track)
       } catch (err) {
@@ -269,7 +285,15 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       // doesn't re-pay for the scrape -- fan-out is that same argument
       // applied to the tracks the listing already contains, which is why it
       // must not skip on the 502 path either.
-      if (kind !== 'track') {
+      //
+      // Gated on `hit === 'miss'`, which is exactly "we just produced and
+      // wrote this": produceAndCache returns 'miss' only after produce()
+      // resolved, and returns 'fresh'/'stale' with a staleError on the
+      // fallback path. Without the gate every cache HIT re-issued one Redis
+      // SET per track -- 50 of them, sequentially, for the whole 4-hour
+      // playlist TTL -- writing back what it had just read. The strict-caller
+      // 502 path below still fans out, because that path produced too.
+      if (kind !== 'track' && result.hit === 'miss') {
         void fanOutTracks(value as unknown as Album | Playlist)
       }
 
