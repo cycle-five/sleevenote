@@ -97,6 +97,60 @@ forever** — strictly worse than the truncation the check exists to catch.
 Both the counts and the track lists are built from the same deduplicated
 source, so the count and the list can never disagree about what was seen.
 
+## Partial listings are a policy choice, not an extraction change
+
+The completeness *check* above — declared total against items seen — is
+untouched. What changed is what happens when it fails: a shortfall used to
+throw `ExtractionIncompleteError` straight out of `runExtraction`; it now
+comes back as an ordinary `Album` or `Playlist` with `complete: false`, and
+`declaredItems` carrying Spotify's own total. `runExtraction` reports a fact;
+`server.ts` decides what the fact means. `ExtractionEmptyError` keeps its
+throw deliberately — zero tracks is not a partial listing, it is extraction
+that stopped matching Spotify's page, the same failure the five-error table
+exists to catch.
+
+**Why partials are opt-in.** A truncated playlist looks exactly like a
+complete one — that sentence opens the section above, and it is the whole
+argument here too. Serving `complete: false` listings as plain 200s by
+default would hand every consumer that doesn't know to check `complete` the
+exact silent shortfall this service exists to rule out; that consumer is not
+hypothetical, it's every caller written before this field existed. So the
+default stays what it was: no flag, a short listing still 502s
+`extraction_incomplete`. `?partial=allow` on `/v1/album/:id` and
+`/v1/playlist/:id` opts a caller in per request, not per deployment — the
+choice has to stay visible at the call site, because a server-wide setting is
+exactly the kind of thing that gets turned on once and forgotten.
+
+**Why a cached partial is refused for a strict caller, not 502'd from cache.**
+`ExtractionIncompleteError` was never cached, for the reason given above under
+"Why the TTL is seconds": caching a failure that's a statement about *us*
+means caching our own bugs, and a fixed pagination bug would otherwise keep
+serving the old shortfall until the entry expired. Now that a shortfall is a
+value instead of a throw, it *is* cacheable — an opt-in caller benefits from
+not re-scraping — but caching it for a strict caller too would quietly
+reopen exactly that hole: a fixed bug's result sitting behind a cache hit,
+never re-produced, for up to `TTL_PLAYLIST`. `withCache`'s `acceptsCached`
+predicate is how a strict caller keeps the retry path the never-cache rule
+protected: a cached partial reads as a miss to it, so it re-produces, 502s if
+still short, and refreshes the cached partial on the way past — which the
+next opt-in caller benefits from. No worse than before, where every strict
+request re-scraped unconditionally; better, because now an opt-in caller
+downstream of a strict retry is more likely to find a fresher or complete
+entry waiting.
+
+**The scroll loop's new status: fallback, not dead code.** In-page pagination
+(next section) replaces scrolling as the normal path — a browser that hands
+back a reusable pathfinder request template pages by offset instead of
+hoping a scroll gesture provokes the next batch. But the template can fail to
+harvest, a page can navigate away mid-loop, or a token can expire between
+windows, and when that happens the loop still has to produce *something*
+rather than nothing: it falls back to scrolling exactly as it always has.
+This is why partial handling and pagination shipped as independent changes,
+in that order — pagination narrows *how often* a listing comes back short,
+it does not close the possibility. A caller that only ever saw complete
+listings while testing against small playlists would conclude partials were
+now unreachable and be wrong the first time the fallback fires.
+
 ## Scrolling a virtualized list
 
 `recordResponses` steps the scrollable container by ~80% of its own

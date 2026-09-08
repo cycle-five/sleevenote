@@ -23,6 +23,17 @@ GET /metrics           -> Prometheus exposition
 `:id` is the raw Spotify entity id (the last path segment of
 `open.spotify.com/{track,album,playlist}/{id}`), not a full URL.
 
+An `Album` or `Playlist` response carries `declaredItems` (Spotify's own
+total, or `null` when it declared none) and `complete` (whether every
+declared item came back). By default a short listing still answers 502
+`extraction_incomplete`, exactly as before -- add `?partial=allow` to
+`/v1/album/:id` or `/v1/playlist/:id` to get it anyway, as a 200 with
+`complete: false`. The flag is accepted and ignored on `/v1/track/:id`, which
+has no listing to be partial. See
+[docs/design-notes.md](docs/design-notes.md#partial-listings-are-a-policy-choice-not-an-extraction-change)
+for why the default stays strict and why the flag is per-request rather than
+a server setting.
+
 Real request/response examples, captured from a running deployment, live in
 [docs/examples](docs/examples/README.md) -- a committed contract an
 out-of-repo client can build and test against.
