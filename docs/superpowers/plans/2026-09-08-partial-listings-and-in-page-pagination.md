@@ -52,34 +52,59 @@
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `tests/normalize.test.ts`. Reuse whatever helper that file already uses to build a `Recorded[]` from a fixture — read the top of the file first and follow it rather than inventing a new one.
+Add to `tests/normalize.test.ts`, using the builders already at the top of that
+file: `albumTrackItem(trackId, name, trackNumber, discNumber?)`,
+`albumEntityResponse(id, totalCount, items)` and `fixture(name)`. Do not add a
+new harness.
 
 ```ts
 describe('completeness fields', () => {
-  it('reports a complete album as complete, with the declared total', () => {
-    const recorded = recordedFromFixture('album')       // existing helper
-    const album = normalizeAlbum(recorded, ALBUM_ID)!
-    expect(album.declaredItems).toBe(60)
+  const id = 'complete-test'
+
+  it('reports a complete album as complete, with the declared total', async () => {
+    // The recorded album fixture is id 6ymZBbRSmzAvoSGmwAFoxm; the rest of
+    // this file uses that pairing.
+    const album = normalizeAlbum(await fixture('album'), '6ymZBbRSmzAvoSGmwAFoxm')!
+    expect(album.declaredItems).toBe(album.tracks.length + album.unresolvedItems)
     expect(album.complete).toBe(true)
+  })
+
+  it('marks a short capture incomplete', () => {
+    // Declares three, records one. This is what a truncated capture is.
+    const recorded = [albumEntityResponse(id, 3, [albumTrackItem('t1', 'One', 1)])]
+    const album = normalizeAlbum(recorded, id)!
+    expect(album.declaredItems).toBe(3)
+    expect(album.tracks).toHaveLength(1)
+    expect(album.complete).toBe(false)
   })
 
   it('counts a validation-dropped item as seen, not as a shortfall', () => {
     // The rule design-notes calls load-bearing: an item normalize refuses
-    // (no name, no artists) still COUNTS as seen. Comparing `declaredItems`
-    // against tracks.length would call this complete extraction incomplete.
-    const recorded = recordedWithOneMalformedItem()     // see Step 3 note
-    const album = normalizeAlbum(recorded, ALBUM_ID)!
-    expect(album.tracks.length + album.unresolvedItems).toBe(album.declaredItems)
+    // still COUNTS as seen. Comparing declaredItems against tracks.length
+    // would call this *complete* extraction incomplete -- and because that
+    // used to throw an error that was never cached, it failed forever.
+    const nameless = albumTrackItem('t2', '', 2)
+    const recorded = [albumEntityResponse(id, 2, [albumTrackItem('t1', 'One', 1), nameless])]
+    const album = normalizeAlbum(recorded, id)!
+    expect(album.tracks).toHaveLength(1)
+    expect(album.unresolvedItems).toBe(1)
     expect(album.complete).toBe(true)
   })
 
   it('is complete when Spotify declared no total, because we cannot tell', () => {
-    const album = normalizeAlbum(recordedWithNoTotalCount(), ALBUM_ID)!
+    const recorded = [albumEntityResponse(id, 1, [albumTrackItem('t1', 'One', 1)])]
+    // Strip the declared total the way a page that never reported one leaves it.
+    delete ((recorded[0].body as any).data.albumUnion.tracksV2).totalCount
+    const album = normalizeAlbum(recorded, id)!
     expect(album.declaredItems).toBeNull()
     expect(album.complete).toBe(true)
   })
 })
 ```
+
+If `albumEntityResponse` nests `totalCount` somewhere other than
+`albumUnion.tracksV2`, follow the builder rather than this snippet — read it
+first. The assertion that matters is `declaredItems === null`.
 
 - [ ] **Step 2: Run it and watch it fail**
 
@@ -113,10 +138,9 @@ In `src/normalize.ts`, inside `normalizeAlbum`, where the `Album` object is retu
 and add `declaredItems,` and `complete,` to the returned object. Do the same in
 `normalizePlaylist` (near line 440) using `playlistTotalCount`.
 
-For the malformed-item and no-total fixtures in Step 1: build them in the test
-by structurally editing a **copy** of the existing recorded fixture (drop a
-`name` from one item; delete the `totalCount` key). Do not add new files under
-`tests/fixtures/` — those are recordings, and a hand-edited recording is not one.
+The tests above build their captures with the file's own builders. Do not add
+files under `tests/fixtures/` — those five are recordings of the live service,
+and a hand-written one is not a recording.
 
 - [ ] **Step 4: Run the tests**
 
@@ -146,26 +170,33 @@ Co-Authored-By: Claude & Lothrop (cycle.five@proton.me)"
 
 - [ ] **Step 1: Write the failing test**
 
-```ts
-it('returns a short listing instead of throwing, marked incomplete', async () => {
-  // A capture whose declared total exceeds what was seen -- the shape a
-  // truncated scroll produces.
-  const capture = truncatedPlaylistCapture()   // declared 50, seen 25
-  const result = await extractFromCapture(capture)   // follow the file's existing harness
-  expect(result.type).toBe('playlist')
-  expect(result.tracks.length).toBe(25)
-  expect(result.declaredItems).toBe(50)
-  expect(result.complete).toBe(false)
-})
+`tests/extract.test.ts` builds captures with `playlistItem(trackId, name)` and
+`playlistPageResponse(...)` — read both before writing, and use them.
 
-it('still throws when nothing came back at all', async () => {
-  // ExtractionEmpty is a different fact and keeps its throw: a listing with
-  // zero tracks is not a partial listing, it is a broken extraction.
-  await expect(extractFromCapture(emptyPlaylistCapture())).rejects.toThrow(ExtractionEmptyError)
+The shortfall is now decided in `normalize`, not in `extract`, so the
+behavioural assertion at this layer is that a short capture **no longer
+throws**:
+
+```ts
+it('returns a short listing instead of throwing, marked incomplete', () => {
+  const id = '37i9dQZF1DXcBWIGoYBM5M'
+  // Declares four, records two: the shape a truncated scroll produces.
+  const recorded = [playlistPageResponse(id, 4, 0, [playlistItem('t1', 'One'), playlistItem('t2', 'Two')])]
+  const pl = normalizePlaylist(recorded, id)!
+  expect(pl.tracks).toHaveLength(2)
+  expect(pl.declaredItems).toBe(4)
+  expect(pl.complete).toBe(false)
 })
 ```
 
-Read `tests/extract.test.ts` first and use whatever harness it already has for driving `runExtraction` against a canned capture; do not build a second one.
+Then find every existing test in the suite that asserts
+`ExtractionIncompleteError` is thrown and rewrite it to assert
+`complete === false` on the returned listing. Those are the same behavioural
+claim relocated, so they should be edited rather than deleted — if one cannot
+be restated that way, stop and report it.
+
+`ExtractionEmptyError` keeps its throw and its tests unchanged: a listing with
+zero tracks is not a partial listing, it is extraction that stopped matching.
 
 - [ ] **Step 2: Run it and watch it fail**
 
@@ -612,7 +643,7 @@ Then in `recordResponses`, after the `entityData` race resolves, branch:
       const vars = template.body.variables as Record<string, unknown>
       const limit = typeof vars.limit === 'number' && vars.limit > 0 ? vars.limit : 100
       const first = typeof vars.offset === 'number' ? vars.offset : 0
-      const total = declaredTotalFrom(recorded)   // null when not yet declared
+      const total = declaredTotalFrom(kind, recorded, id)   // null when not yet declared
       for (const offset of pageOffsets(total, limit, first)) {
         const next = withOffset(template, offset, limit)
         await page.evaluate(async (req) => {
@@ -631,10 +662,30 @@ Then in `recordResponses`, after the `entityData` race resolves, branch:
     }
 ```
 
-`declaredTotalFrom(recorded)` reads whichever of `albumTotalCount` /
-`playlistTotalCount` matches the entity being fetched; `recordResponses` does
-not currently know the kind, so thread it in as a parameter from
-`runExtraction`, which does.
+`recordResponses` does not currently know which kind it is fetching, so thread
+`kind` and `id` in as parameters from `runExtraction`, which does, and add this
+helper beside `pageOffsets`:
+
+```ts
+/**
+ * Spotify's declared total for whichever entity is being fetched, or null
+ * when nothing declared one yet. Reuses the same counters the completeness
+ * check uses, so pagination and the verdict can never disagree about how many
+ * items there are supposed to be.
+ */
+export function declaredTotalFrom(
+  kind: 'track' | 'album' | 'playlist',
+  recorded: Recorded[],
+  id: string,
+): number | null {
+  if (kind === 'album') return albumTotalCount(recorded, id)
+  if (kind === 'playlist') return playlistTotalCount(recorded, id)
+  return null   // A track is one item; there is nothing to page through.
+}
+```
+
+`albumTotalCount` and `playlistTotalCount` are already exported from
+`src/normalize.ts`; `extract.ts` already imports from it.
 
 - [ ] **Step 4: Run the suite, then verify against the live service**
 
