@@ -18,7 +18,7 @@ import {
   ExtractionIncompleteError,
   ExtractionTimeoutError,
 } from './extract.js'
-import { cacheHits, scrapeDuration, scrapeFailures, extractionEmpty, registry } from './metrics.js'
+import { cacheHits, scrapeDuration, scrapeFailures, extractionEmpty, partialListings, registry } from './metrics.js'
 
 export type ExtractFn = (
   kind: 'track' | 'album' | 'playlist',
@@ -193,6 +193,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   async function handleEntity(
     kind: EntityKind,
     id: string,
+    partialAllowed: boolean,
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<unknown> {
@@ -218,6 +219,9 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       // defaults to a constant that merely happens to match loadConfig's
       // default, so omitting it breaks single-flight under any non-default
       // PRODUCE_BUDGET_MS. Guarded by a test of the same name.
+      // A track has no listing, so `complete` never appears on one -- a
+      // predicate applied to tracks would refuse every cached track forever.
+      const strictListing = kind !== 'track' && !partialAllowed
       const result = await withCache({
         store,
         key: cacheKey(kind, id),
@@ -226,6 +230,9 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         produce: () => timedExtract(kind, id),
         produceBudgetMs: cfg.produceBudgetMs,
         failureCodec: failureCodecFor(cfg),
+        acceptsCached: strictListing
+          ? (v: unknown) => (v as { complete?: boolean }).complete !== false
+          : undefined,
       })
       // Stale-on-error serves a value while discarding the failure that
       // caused the fallback. Record it without changing the response.
@@ -234,6 +241,24 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       }
       reply.header('X-Cache', result.hit)
       cacheHits.inc({ type: kind, result: result.hit })
+
+      const value = result.value as { complete?: boolean; declaredItems?: number | null; tracks?: unknown[] }
+      if (value.complete === false) {
+        partialListings.inc({ type: kind, served: partialAllowed ? 'yes' : 'no' })
+        if (!partialAllowed) {
+          // The listing is cached either way: an opt-in caller behind us
+          // gets it without paying for the scrape again.
+          reply.code(502)
+          const seen = value.tracks?.length ?? 0
+          return {
+            error: 'extraction_incomplete',
+            id,
+            message:
+              `${kind} ${id} saw ${seen} of ${value.declaredItems} declared tracks ` +
+              `-- retry with ?partial=allow to take what was recovered`,
+          }
+        }
+      }
       return result.value
     } catch (err) {
       // Keeping these four apart is the point. Collapsing any pair into one
@@ -286,8 +311,9 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   }
 
   for (const kind of ENTITY_KINDS) {
-    fastify.get<{ Params: { id: string } }>(`/v1/${kind}/:id`, async (req, reply) =>
-      handleEntity(kind, req.params.id, req, reply),
+    fastify.get<{ Params: { id: string }; Querystring: { partial?: string } }>(
+      `/v1/${kind}/:id`,
+      async (req, reply) => handleEntity(kind, req.params.id, req.query.partial === 'allow', req, reply),
     )
   }
 

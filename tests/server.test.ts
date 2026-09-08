@@ -45,6 +45,47 @@ function server(extract: any, store = new MemoryStore()) {
 
 const TRACK = { id: 'abc', type: 'track', name: 'Hideaway', artists: [{ name: 'Kiesza', id: null }], album: null, durationMs: null, url: 'https://open.spotify.com/track/abc' }
 
+function aTrack() {
+  return TRACK
+}
+
+function makePlaylistTrack(i: number) {
+  return { id: `t${i}`, type: 'track', name: `Track ${i}`, artists: [{ name: 'Someone', id: null }], album: null, durationMs: null, url: `https://open.spotify.com/track/t${i}` }
+}
+
+// declaredItems: 50, complete: false -- exactly the shape a truncated scroll
+// leaves behind (Task 1/2): the listing came back, it just didn't see
+// everything Spotify declared.
+function shortPlaylist() {
+  return {
+    id: 'abc',
+    type: 'playlist',
+    name: 'A Playlist',
+    owner: 'someone',
+    image: null,
+    url: 'https://open.spotify.com/playlist/abc',
+    tracks: Array.from({ length: 25 }, (_, i) => makePlaylistTrack(i)),
+    unresolvedItems: 0,
+    declaredItems: 50,
+    complete: false,
+  }
+}
+
+function fullPlaylist() {
+  return {
+    id: 'abc',
+    type: 'playlist',
+    name: 'A Playlist',
+    owner: 'someone',
+    image: null,
+    url: 'https://open.spotify.com/playlist/abc',
+    tracks: Array.from({ length: 50 }, (_, i) => makePlaylistTrack(i)),
+    unresolvedItems: 0,
+    declaredItems: 50,
+    complete: true,
+  }
+}
+
 describe('GET /health', () => {
   it('returns the exact origin string when Redis and the pool are up', async () => {
     const app = server(async () => TRACK)
@@ -142,6 +183,56 @@ describe('ExtractionIncompleteError', () => {
 
     expect(res.statusCode).toBe(502)
     expect(await store.get('v1:playlist:abc')).toBeNull()
+  })
+})
+
+describe('?partial=allow', () => {
+  // The default: a short listing 502s exactly as a fully-failed extraction
+  // would, per docs/design-notes.md -- a truncated playlist looks identical
+  // to a complete one, so silently serving it as a 200 recreates the failure
+  // this whole design exists to catch. Policy belongs to the caller.
+  it('502s a short listing by default', async () => {
+    const app = server(async () => shortPlaylist())
+    const res = await app.inject({ url: '/v1/playlist/abc' })
+    expect(res.statusCode).toBe(502)
+    expect(res.json().error).toBe('extraction_incomplete')
+  })
+
+  it('serves a short listing to a caller that asked for one', async () => {
+    const app = server(async () => shortPlaylist())
+    const res = await app.inject({ url: '/v1/playlist/abc?partial=allow' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().complete).toBe(false)
+    expect(res.json().declaredItems).toBe(50)
+    expect(res.json().tracks).toHaveLength(25)
+  })
+
+  // The listing is cached either way -- withCache's write happens before the
+  // strict/partial decision is made -- so a strict caller arriving after a
+  // partial-accepting one must not be handed that cached partial. It has to
+  // treat it as a miss and re-produce.
+  it('re-produces rather than serving a cached partial to a strict caller', async () => {
+    const store = new MemoryStore()
+    let calls = 0
+    const extract = async () => {
+      calls++
+      return calls === 1 ? shortPlaylist() : fullPlaylist()
+    }
+    const app = server(extract, store)
+    await app.inject({ url: '/v1/playlist/abc?partial=allow' }) // caches the partial
+    const res = await app.inject({ url: '/v1/playlist/abc' }) // strict
+    expect(calls).toBe(2)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().complete).toBe(true)
+  })
+
+  // A track has no listing, so `complete` never appears on one. A client
+  // that sets the flag uniformly across every route should not have to
+  // special-case the one kind it does nothing on.
+  it('ignores the flag on a track, which has no listing', async () => {
+    const app = server(async () => aTrack())
+    const res = await app.inject({ url: '/v1/track/abc?partial=allow' })
+    expect(res.statusCode).toBe(200)
   })
 })
 
