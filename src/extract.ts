@@ -1,7 +1,14 @@
 import type { Page, Request, Response } from 'playwright'
 import type { Pool } from './browser.js'
 import type { Config } from './config.js'
-import { PATHFINDER_URL, normalizeAlbum, normalizePlaylist, normalizeTrack } from './normalize.js'
+import {
+  PATHFINDER_URL,
+  albumTotalCount,
+  normalizeAlbum,
+  normalizePlaylist,
+  normalizeTrack,
+  playlistTotalCount,
+} from './normalize.js'
 import type { Album, Playlist, Recorded, Track } from './types.js'
 
 // Five distinct failures, never collapsed into one. A 404 means Spotify
@@ -75,6 +82,37 @@ export function isWindowedQuery(url: string, body: unknown): boolean {
   return (variables as Record<string, unknown>).offset !== undefined
 }
 
+// A ceiling on pages, not on tracks: a 10 000-track playlist is not something
+// this service promises, and an unbounded loop against a number Spotify
+// supplies is a denial of service it hands us.
+export const MAX_PAGES = 40
+
+/** The offsets still to fetch, given what the first response already covered. */
+export function pageOffsets(total: number | null, limit: number, firstOffset: number): number[] {
+  if (total === null || limit <= 0) return []
+  const offsets: number[] = []
+  for (let o = firstOffset + limit; o < total && offsets.length < MAX_PAGES; o += limit) {
+    offsets.push(o)
+  }
+  return offsets
+}
+
+/**
+ * Spotify's declared total for whichever entity is being fetched, or null
+ * when nothing declared one yet. Reuses the same counters the completeness
+ * check uses, so pagination and the verdict can never disagree about how many
+ * items there are supposed to be.
+ */
+export function declaredTotalFrom(
+  kind: 'track' | 'album' | 'playlist',
+  recorded: Recorded[],
+  id: string,
+): number | null {
+  if (kind === 'album') return albumTotalCount(recorded, id)
+  if (kind === 'playlist') return playlistTotalCount(recorded, id)
+  return null // A track is one item; there is nothing to page through.
+}
+
 /** Summarise a capture for logging. Pure, so the summary is testable alone. */
 export function evidenceFrom(capture: Capture): ExtractionEvidence {
   const { navStatus, responses: recorded } = capture
@@ -141,25 +179,46 @@ function sleep(ms: number): Promise<void> {
   })
 }
 
+// Only reached when the harvested query carried no usable `limit` of its own,
+// which no observed query has done -- `isWindowedQuery` already demands an
+// `offset`, and every windowed query measured so far carried both. It stays a
+// guess rather than a certainty, so note the risk it uniquely carries: offsets
+// step by whatever `limit` we ask for, so if Spotify caps a page below that,
+// we skip the difference. The normal path cannot hit that, because it reuses
+// the page's own `limit` -- a window Spotify has already honoured once.
+const DEFAULT_PAGE_LIMIT = 100
+
 const SCROLL_MAX_ITERATIONS = 200
 const SCROLL_STEP_DELAY_MS = 350
 const SCROLL_SETTLE_MS = 3_000
 
 /**
- * Navigate to `url`, collect every JSON response the page fetches, and page
- * through a virtualized list so the full track list is recovered.
+ * Navigate to `url`, collect every JSON response the page fetches, and recover
+ * the whole of a virtualized list rather than the first window of it.
+ *
+ * Two strategies, and they are not equals. Preferred: repeat the page's own
+ * windowed pathfinder query at each remaining offset (see [`QueryTemplate`]).
+ * That asks for exactly the items that are missing and knows when it is done.
+ * Fallback, taken only when the page issued no such query for us to harvest:
+ * scroll the list and hope it fetches more.
  *
  * The scroll technique is load-bearing and was measured wrong twice before
  * this shape worked -- do not "simplify" it without reading
  * docs/design-notes.md ("Scrolling a virtualized list") and
- * docs/captured-shapes.md ("Pagination").
+ * docs/captured-shapes.md ("Pagination"). It is emphatically not dead code:
+ * a navigation that lands without provoking a windowed query still arrives
+ * here, and comes up short. Serving a short listing to a caller who opted into
+ * one is exactly why that path shipped before this one.
  *
- * A track page needs no special case: nothing matches the container
- * heuristic, so the loop exits on its first iteration.
+ * A track page needs no special case on either branch: it declares no total,
+ * so pagination asks for nothing, and nothing matches the container heuristic,
+ * so the scroll loop exits on its first iteration.
  */
 export async function recordResponses(
   page: Page,
   url: string,
+  kind: 'track' | 'album' | 'playlist',
+  id: string,
   navTimeoutMs: number,
   entityDataTimeoutMs: number,
 ): Promise<Capture> {
@@ -174,7 +233,15 @@ export async function recordResponses(
     sawEntityData = resolve
   })
 
-  const onResponse = async (response: Response): Promise<void> => {
+  // Reading a body is a round trip of its own, and `page.on` discards whatever
+  // its handler returns -- so a read can still be in flight after we have
+  // stopped looking. Scrolling never had to care: `sawEntityData()` fires
+  // before the body is read, but the 3s settle that followed always covered
+  // the gap. Pagination has no settle, and it has to read `totalCount` off a
+  // response the instant that race resolves. Keeping the promises lets it wait
+  // for the reads it actually provoked instead of guessing at a duration.
+  const bodies: Promise<void>[] = []
+  const readResponse = async (response: Response): Promise<void> => {
     const contentType = response.headers()['content-type'] ?? ''
     if (!contentType.includes('json')) return
     if (response.url().startsWith(PATHFINDER_URL)) sawEntityData()
@@ -184,11 +251,18 @@ export async function recordResponses(
       // A JSON content-type that isn't JSON is not a reason to fail.
     }
   }
+  const onResponse = (response: Response): void => {
+    bodies.push(readResponse(response))
+  }
   page.on('response', onResponse)
 
-  let template: QueryTemplate | null = null
+  // An array holding at most one, rather than a `let`, because TypeScript's
+  // flow analysis does not follow an assignment made inside an event handler:
+  // it would narrow a `let` initialised to `null` to `never` for the whole
+  // rest of this function, and the pagination branch below would not compile.
+  const templates: QueryTemplate[] = []
   const onRequest = (request: Request): void => {
-    if (template !== null) return
+    if (templates.length > 0) return
     if (!request.url().startsWith(PATHFINDER_URL)) return
     let body: unknown
     try {
@@ -197,7 +271,7 @@ export async function recordResponses(
       return // Not JSON we can repeat.
     }
     if (!isWindowedQuery(request.url(), body)) return
-    template = { url: request.url(), headers: request.headers(), body: body as Record<string, unknown> }
+    templates.push({ url: request.url(), headers: request.headers(), body: body as Record<string, unknown> })
   }
   page.on('request', onRequest)
 
@@ -208,9 +282,11 @@ export async function recordResponses(
     // Spotify answers a dead entity on the document itself -- 404 for a track
     // or album, 400 for a playlist (measured, hence `>= 400` and never
     // `=== 404`) -- and serves a "Page not found" shell. There is no
-    // virtualized list to page through, so the loop below and its 3s settle
-    // would be four seconds spent scrolling a placeholder.
-    if (navStatus !== null && navStatus >= 400) return { navStatus, responses: recorded, template }
+    // virtualized list to recover, so whichever branch below we took would be
+    // spent either paging a shell or scrolling a placeholder.
+    if (navStatus !== null && navStatus >= 400) {
+      return { navStatus, responses: recorded, template: templates[0] ?? null }
+    }
 
     // Wait for the data itself, not for a proxy for it.
     //
@@ -225,24 +301,76 @@ export async function recordResponses(
     // normalizers report what they actually found.
     await Promise.race([entityData, sleep(entityDataTimeoutMs)])
 
-    let exhausted = false
-    for (let i = 0; i < SCROLL_MAX_ITERATIONS && !exhausted; i++) {
-      exhausted = await page.evaluate(() => {
-        let best: HTMLElement | null = null
-        for (const el of Array.from(document.querySelectorAll('*'))) {
-          const e = el as HTMLElement
-          if (e.scrollHeight > e.clientHeight + 200 && e.clientHeight > 200) {
-            if (!best || e.scrollHeight > best.scrollHeight) best = e
-          }
+    const template = templates[0]
+    if (template !== undefined) {
+      // Pagination: ask for the rest directly. Issued from inside the page so
+      // the session, cookies and tokens are the page's own -- we repeat its
+      // request, we do not construct one. The responses arrive through the
+      // same `onResponse` listener as the ones the page fetched for itself, so
+      // nothing downstream can tell which is which. That is the point: it is
+      // what keeps `normalize` and every fixture in the corpus untouched.
+      const vars = template.body['variables'] as Record<string, unknown>
+      const rawLimit = vars['limit']
+      const rawOffset = vars['offset']
+      const limit = typeof rawLimit === 'number' && rawLimit > 0 ? rawLimit : DEFAULT_PAGE_LIMIT
+      const first = typeof rawOffset === 'number' ? rawOffset : 0
+
+      // The entity race resolves on the response *event*, which fires before
+      // its body has been pulled across -- so `recorded` can still be empty
+      // right here. Reading the declared total off it without this wait finds
+      // null, pages nothing, and produces the short listing this task exists
+      // to eliminate, wearing pagination's clothes.
+      await Promise.all(bodies)
+      const total = declaredTotalFrom(kind, recorded, id)
+
+      for (const offset of pageOffsets(total, limit, first)) {
+        const next = withOffset(template, offset, limit)
+        try {
+          await page.evaluate(async (req) => {
+            const res = await fetch(req.url, {
+              method: 'POST',
+              headers: req.headers,
+              body: JSON.stringify(req.body),
+            })
+            // Drain it in the page: Playwright can only hand us a body the
+            // browser actually finished receiving.
+            await res.text()
+          }, next)
+        } catch {
+          // A window we could not fetch is a short listing, not a failed
+          // extraction -- holding that distinction is the whole of Phase 1.
+          // Stop asking rather than hammer a page that has stopped answering;
+          // `complete: false` on the result reports the shortfall honestly.
+          break
         }
-        if (!best) return true
-        const before = best.scrollTop
-        best.scrollTop = Math.min(best.scrollTop + best.clientHeight * 0.8, best.scrollHeight)
-        return best.scrollTop <= before
-      })
-      await page.waitForTimeout(SCROLL_STEP_DELAY_MS)
+      }
+      // The final window's body is still crossing the wire when its
+      // `page.evaluate` resolves. Dropping it would silently lose the last
+      // page of every listing.
+      await Promise.all(bodies)
+    } else {
+      // No query to repeat: fall back to provoking the page into fetching more
+      // by scrolling. This is the degraded path -- undirected, and with no way
+      // to know it has finished except running out of iterations.
+      let exhausted = false
+      for (let i = 0; i < SCROLL_MAX_ITERATIONS && !exhausted; i++) {
+        exhausted = await page.evaluate(() => {
+          let best: HTMLElement | null = null
+          for (const el of Array.from(document.querySelectorAll('*'))) {
+            const e = el as HTMLElement
+            if (e.scrollHeight > e.clientHeight + 200 && e.clientHeight > 200) {
+              if (!best || e.scrollHeight > best.scrollHeight) best = e
+            }
+          }
+          if (!best) return true
+          const before = best.scrollTop
+          best.scrollTop = Math.min(best.scrollTop + best.clientHeight * 0.8, best.scrollHeight)
+          return best.scrollTop <= before
+        })
+        await page.waitForTimeout(SCROLL_STEP_DELAY_MS)
+      }
+      await page.waitForTimeout(SCROLL_SETTLE_MS)
     }
-    await page.waitForTimeout(SCROLL_SETTLE_MS)
   } finally {
     // The page is pooled and reused. A listener left attached would keep
     // pushing into this call's abandoned array for the rest of the page's
@@ -251,7 +379,7 @@ export async function recordResponses(
     page.off('request', onRequest)
   }
 
-  return { navStatus, responses: recorded, template }
+  return { navStatus, responses: recorded, template: templates[0] ?? null }
 }
 
 function entityUrl(kind: 'track' | 'album' | 'playlist', id: string): string {
@@ -284,6 +412,8 @@ async function runExtraction(
     const capture = await recordResponses(
       lease.page,
       entityUrl(kind, id),
+      kind,
+      id,
       cfg.navTimeoutMs,
       cfg.entityDataTimeoutMs,
     )

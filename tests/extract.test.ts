@@ -7,6 +7,9 @@ import {
   extract,
   withOffset,
   isWindowedQuery,
+  pageOffsets,
+  declaredTotalFrom,
+  MAX_PAGES,
   NotFoundError,
   ExtractionEmptyError,
   ExtractionSilentError,
@@ -16,6 +19,7 @@ import {
   normalizePlaylist,
   playlistItemCount,
   playlistTotalCount,
+  albumTotalCount,
 } from '../src/normalize.js'
 import type { Recorded } from '../src/types.js'
 
@@ -69,7 +73,7 @@ describe('recordResponses', () => {
       return route.fulfill({ status: 200, contentType: 'text/plain', body: 'not json' })
     })
 
-    const capture = await recordResponses(lease.page, 'https://fake.test/page', 10_000, 500)
+    const capture = await recordResponses(lease.page, 'https://fake.test/page', 'track', 'fakeId', 10_000, 500)
     await lease.release()
 
     const bodies = capture.responses.map((r) => r.body)
@@ -127,6 +131,28 @@ describe('isWindowedQuery', () => {
 
   it('is false for a pathfinder URL whose variables has no offset -- the entity-header query', () => {
     expect(isWindowedQuery(PATHFINDER_URL, { operationName: 'fetchTrack', variables: { uri: 'spotify:track:abc' } })).toBe(false)
+  })
+})
+
+// The arithmetic of the pagination loop, separated from the browser so it can
+// be tested at all. Getting `pageOffsets` wrong is not a visible failure once
+// Phase 1 shipped: asking for too few pages returns a short listing, which is
+// now a legitimate answer to an opt-in caller, so a loop that under-runs looks
+// exactly like the feature working. MAX_PAGES matters for the opposite reason
+// -- the total it walks toward is a number Spotify supplies.
+describe('pageOffsets', () => {
+  it('walks the window to the declared total and stops', () => {
+    expect(pageOffsets(50, 25, 0)).toEqual([25])          // 25 already seen
+    expect(pageOffsets(150, 50, 0)).toEqual([50, 100])
+    expect(pageOffsets(25, 100, 0)).toEqual([])           // one page covered it
+  })
+
+  it('is bounded even against an absurd declared total', () => {
+    expect(pageOffsets(1_000_000, 1, 0).length).toBeLessThanOrEqual(MAX_PAGES)
+  })
+
+  it('asks for nothing when the total is unknown', () => {
+    expect(pageOffsets(null, 25, 0)).toEqual([])
   })
 })
 
@@ -1136,4 +1162,47 @@ describe('extract', () => {
       await bPool.close()
     }
   }, 10_000)
+})
+
+// The number the pagination loop walks toward. It has to come from the same
+// counters the completeness verdict reads, or the loop can stop at a total the
+// verdict then calls short -- a listing marked incomplete that nothing will
+// ever complete, because pagination believed it was done.
+describe('declaredTotalFrom', () => {
+  /** The minimum `albumUnion` shape `albumTotalCount` will read a total off. */
+  function albumTotalResponse(id: string, totalCount: number): Recorded {
+    return {
+      url: PATHFINDER_URL,
+      status: 200,
+      body: {
+        data: {
+          albumUnion: { __typename: 'Album', uri: `spotify:album:${id}`, tracksV2: { totalCount } },
+        },
+      },
+    }
+  }
+
+  it('reads an album total off the same counter the completeness check uses', () => {
+    const recorded = [albumTotalResponse('albumId', 60)]
+    expect(declaredTotalFrom('album', recorded, 'albumId')).toBe(60)
+    expect(declaredTotalFrom('album', recorded, 'albumId')).toBe(albumTotalCount(recorded, 'albumId'))
+  })
+
+  it('reads a playlist total off the same counter the completeness check uses', () => {
+    const recorded = [
+      playlistPageResponse('plId', { offset: 0, limit: 25, itemCount: 25, totalCount: 50, entity: true }),
+    ]
+    expect(declaredTotalFrom('playlist', recorded, 'plId')).toBe(50)
+    expect(declaredTotalFrom('playlist', recorded, 'plId')).toBe(playlistTotalCount(recorded, 'plId'))
+  })
+
+  it('is null for a track -- one item, nothing to page through', () => {
+    const recorded = [albumTotalResponse('albumId', 60)]
+    expect(declaredTotalFrom('track', recorded, 'albumId')).toBeNull()
+  })
+
+  it('is null when nothing declared a total, so the loop asks for nothing', () => {
+    expect(declaredTotalFrom('album', [], 'albumId')).toBeNull()
+    expect(declaredTotalFrom('playlist', [], 'plId')).toBeNull()
+  })
 })
