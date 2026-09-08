@@ -172,9 +172,15 @@ Consequences, stated so they are not discovered later:
 - A strict request behind a cached partial re-produces. If the result is still
   short it 502s, having refreshed the cached partial on the way past, which
   opt-in callers then benefit from.
-- Single-flight still holds: the lock is keyed on the entity, not the caller's
-  strictness, so a strict and an opt-in caller racing the same cold key
-  produce once.
+- Single-flight is weaker than it was, and deliberately so. The lock is keyed
+  on the entity, not the caller's strictness, so it still stops two callers
+  producing the *same* answer concurrently. But a strict caller and an opt-in
+  caller are not asking the same question: a strict caller racing a holder
+  that produces a partial refuses what the holder wrote and produces a second
+  time. That is the previous bullet arriving by another route, not a
+  regression -- the alternative is serving a strict caller a listing it
+  explicitly refused. It produces promptly, on seeing the refused entry,
+  rather than after polling out the whole `produceBudgetMs`.
 - A strict caller can be served a *stale complete* entry in preference to a
   fresh partial. That is correct: it asked for a complete listing.
 
