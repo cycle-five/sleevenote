@@ -328,6 +328,22 @@ export async function recordResponses(
       await Promise.all(bodies)
       const total = declaredTotalFrom(kind, recorded, id)
 
+      // Nothing declared a total, so `pageOffsets` asks for nothing and the
+      // loop below fetches no windows at all. For a listing that is the same
+      // outcome as a failed pagination -- whatever the first response carried
+      // is all the caller gets -- and it is otherwise completely silent: with
+      // no declared total the verdict is `complete: true` by definition (see
+      // the spec's "Spotify declared nothing, so we cannot tell"), so not
+      // even `complete: false` marks it. Same register as the mid-loop warn
+      // below, and for the same reason: a short listing that reads as a whole
+      // one is what this service exists to prevent.
+      if (total === null && kind !== 'track') {
+        console.warn(
+          `[extract] ${kind} ${id}: no declared total in ${recorded.length} recorded response(s) ` +
+            `-- no windows will be fetched; listing is whatever the first page carried`,
+        )
+      }
+
       const offsets = pageOffsets(total, limit, first)
       for (const [i, offset] of offsets.entries()) {
         const next = withOffset(template, offset, limit)
@@ -382,6 +398,22 @@ export async function recordResponses(
       // No query to repeat: fall back to provoking the page into fetching more
       // by scrolling. This is the degraded path -- undirected, and with no way
       // to know it has finished except running out of iterations.
+      //
+      // Which is why it is announced. An operator looking at a short listing
+      // has three candidate causes and only one of them used to leave a
+      // trace: a window failed mid-loop (the warn in the branch above), no
+      // template was ever harvested (here), or nothing declared a total (the
+      // warn above that). Without this line, "Spotify changed how the web
+      // player issues pathfinder queries" -- the named risk this fallback
+      // exists to absorb -- degrades to today's behaviour completely
+      // silently, which is how the fallback stops being a fallback and starts
+      // being the only path.
+      if (kind !== 'track') {
+        console.warn(
+          `[extract] ${kind} ${id}: no windowed pathfinder query to repeat ` +
+            `-- falling back to the scroll heuristic; listing may be short`,
+        )
+      }
       let exhausted = false
       for (let i = 0; i < SCROLL_MAX_ITERATIONS && !exhausted; i++) {
         exhausted = await page.evaluate(() => {
