@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildServer } from '../src/server.js'
-import { MemoryStore } from '../src/cache.js'
+import { MemoryStore, cacheKey } from '../src/cache.js'
 import { loadConfig } from '../src/config.js'
 import {
   NotFoundError,
@@ -82,6 +82,36 @@ function fullPlaylist() {
     tracks: Array.from({ length: 50 }, (_, i) => makePlaylistTrack(i)),
     unresolvedItems: 0,
     declaredItems: 50,
+    complete: true,
+  }
+}
+
+// Album tracks list with `album: null` (see fanout.ts) -- that is the point:
+// fan-out is what attaches the parent, so this fixture deliberately leaves it
+// unset rather than pre-filling what the code under test is meant to produce.
+function albumTrack(i: number, name: string) {
+  return {
+    id: `t${i}`,
+    type: 'track',
+    name,
+    artists: [{ name: 'Someone', id: null }],
+    album: null,
+    durationMs: null,
+    url: `https://open.spotify.com/track/t${i}`,
+  }
+}
+
+function albumWithTwoTracks() {
+  return {
+    id: 'al1',
+    type: 'album',
+    name: 'An Album',
+    artists: [{ name: 'Someone', id: null }],
+    image: null,
+    url: 'https://open.spotify.com/album/al1',
+    tracks: [albumTrack(1, 'King Creole'), albumTrack(2, 'Trouble')],
+    unresolvedItems: 0,
+    declaredItems: 2,
     complete: true,
   }
 }
@@ -597,5 +627,48 @@ describe('a silent extraction is our failure, not the entity being absent', () =
       expect(res.statusCode).toBe(502)
       expect(res.json().error).toBe('extraction_silent')
     }
+  })
+})
+
+// An album or playlist response already contains every track in it, fully
+// resolved. Fan-out is what keeps a later /v1/track/:id for one of those
+// tracks from paying for a whole browser scrape it doesn't need.
+describe('fan-out', () => {
+  it('caches each listed track under its own id', async () => {
+    const store = new MemoryStore()
+    const app = server(async () => albumWithTwoTracks(), store)
+    await app.inject({ url: '/v1/album/al1' })
+    const raw = await store.get(cacheKey('track', 't1'))
+    expect(raw).not.toBeNull()
+    expect(JSON.parse(raw!).value.name).toBe('King Creole')
+  })
+
+  it('does not fail the request when a fan-out write fails', async () => {
+    // The listing is the answer. A cache write that did not happen is a
+    // missed optimisation, not a failed lookup. Only the fan-out targets
+    // (the track keys) are broken here -- an unscoped failure would also
+    // break the album's own primary cache write and 502 the request for a
+    // reason unrelated to fan-out, which is not what this test is about
+    // (see the "store.set failure ... surfaces as an error" test above).
+    const store = new MemoryStore()
+    const originalSet = store.set.bind(store)
+    store.set = async (key: string, value: string, ttlSeconds: number) => {
+      if (key.startsWith(cacheKey('track', ''))) throw new StoreError('down')
+      return originalSet(key, value, ttlSeconds)
+    }
+    const app = server(async () => albumWithTwoTracks(), store)
+    const res = await app.inject({ url: '/v1/album/al1' })
+    expect(res.statusCode).toBe(200)
+  })
+
+  // complete: false must not gate fan-out -- the tracks that did arrive in a
+  // truncated listing are real entities, not provisional ones.
+  it('fans out the tracks that did arrive from a partial listing', async () => {
+    const store = new MemoryStore()
+    const app = server(async () => shortPlaylist(), store)
+    await app.inject({ url: '/v1/playlist/abc?partial=allow' })
+    const raw = await store.get(cacheKey('track', 't0'))
+    expect(raw).not.toBeNull()
+    expect(JSON.parse(raw!).value.name).toBe('Track 0')
   })
 })

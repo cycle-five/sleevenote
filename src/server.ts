@@ -10,6 +10,7 @@ import type { Pool } from './browser.js'
 import type { Config } from './config.js'
 import type { Track, Album, Playlist } from './types.js'
 import { cacheKey, withCache, type FailureCodec } from './cache.js'
+import { tracksToCache } from './fanout.js'
 import {
   ExtractionError,
   NotFoundError,
@@ -190,6 +191,20 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     }
   }
 
+  // Best effort: a listing that arrived is the answer whether or not its
+  // tracks got cached. One failed write must not abandon the rest, and none
+  // of them may reach the caller -- see the call site's comment.
+  async function fanOutTracks(entity: Album | Playlist): Promise<void> {
+    const storedAt = now()
+    for (const track of tracksToCache(entity)) {
+      try {
+        await store.set(cacheKey('track', track.id), JSON.stringify({ value: track, storedAt }), cfg.ttl.track)
+      } catch (err) {
+        fastify.log.debug({ id: track.id, err }, 'fan-out write failed')
+      }
+    }
+  }
+
   async function handleEntity(
     kind: EntityKind,
     id: string,
@@ -258,6 +273,14 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
               `-- retry with ?partial=allow to take what was recovered`,
           }
         }
+      }
+
+      // Best effort, and deliberately not awaited into the response path's
+      // error handling: a listing that arrived is the answer whether or not
+      // its tracks got cached. Partial listings fan out too -- the tracks
+      // that did arrive are real.
+      if (kind !== 'track') {
+        void fanOutTracks(value as unknown as Album | Playlist)
       }
       return result.value
     } catch (err) {
