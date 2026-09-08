@@ -1,16 +1,7 @@
 import type { Page, Response } from 'playwright'
 import type { Pool } from './browser.js'
 import type { Config } from './config.js'
-import {
-  PATHFINDER_URL,
-  albumItemCount,
-  albumTotalCount,
-  normalizeAlbum,
-  normalizePlaylist,
-  normalizeTrack,
-  playlistItemCount,
-  playlistTotalCount,
-} from './normalize.js'
+import { PATHFINDER_URL, normalizeAlbum, normalizePlaylist, normalizeTrack } from './normalize.js'
 import type { Album, Playlist, Recorded, Track } from './types.js'
 
 // Five distinct failures, never collapsed into one. A 404 means Spotify
@@ -272,33 +263,13 @@ async function runExtraction(
         evidenceFrom(capture),
       )
     }
-    // Compare Spotify's declared total against `seen` -- raw items present
-    // across responses -- and NOT against `result.tracks.length`. A track
-    // dropped by normalize.ts's validation is that rule working, not a missed
-    // page; conflating them fires on complete extractions and, since this
-    // error is never cached, fails every retry forever.
-    if (result.type === 'album') {
-      const declared = albumTotalCount(recorded, id)
-      const seen = albumItemCount(recorded, id)
-      if (declared !== null && seen !== null && seen !== declared) {
-        throw new ExtractionIncompleteError(
-          `album ${id} saw ${seen} of ${declared} declared tracks across recorded responses ` +
-          `(${result.tracks.length} well-formed) -- extraction was incomplete`,
-          evidenceFrom(capture),
-        )
-      }
-    }
-    if (result.type === 'playlist') {
-      const declared = playlistTotalCount(recorded, id)
-      const seen = playlistItemCount(recorded, id)
-      if (declared !== null && seen !== null && seen !== declared) {
-        throw new ExtractionIncompleteError(
-          `playlist ${id} saw ${seen} of ${declared} declared tracks across recorded responses ` +
-          `(${result.tracks.length} well-formed) -- extraction was incomplete`,
-          evidenceFrom(capture),
-        )
-      }
-    }
+    // A shortfall is no longer a failure here. `normalize` records it on the
+    // result as `complete: false` and the route decides what it means: a
+    // caller that asked for partials gets the listing, one that did not gets
+    // the 502 this used to throw. Extraction reports; policy is the caller's.
+    //
+    // ExtractionEmptyError above keeps its throw deliberately -- zero tracks
+    // is not a partial listing, it is extraction that stopped matching.
     return result
   } finally {
     // The pool cannot enforce this, so every path out -- including a throw

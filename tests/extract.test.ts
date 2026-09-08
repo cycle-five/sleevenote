@@ -7,7 +7,6 @@ import {
   extract,
   NotFoundError,
   ExtractionEmptyError,
-  ExtractionIncompleteError,
   ExtractionSilentError,
 } from '../src/extract.js'
 import {
@@ -193,6 +192,20 @@ describe('playlist pagination: dedup by absolute index, not sum or naive concate
     const smallPlaylist = normalizePlaylist(small, smallId)
     expect(new Set(largePlaylist!.tracks.map((t) => t.id)).size).toBe(largePlaylist!.tracks.length)
     expect(new Set(smallPlaylist!.tracks.map((t) => t.id)).size).toBe(smallPlaylist!.tracks.length)
+  })
+
+  // The shortfall verdict now lives entirely in normalize (Task 1):
+  // `complete` is derivable from `declaredItems` and `tracks.length` alone,
+  // with no involvement from extract.ts. This is a short listing, not an
+  // empty one, so it must come back rather than throw.
+  it('returns a short listing instead of throwing, marked incomplete', () => {
+    const id = '37i9dQZF1DXcBWIGoYBM5M'
+    // Declares four, records two: the shape a truncated scroll produces.
+    const recorded = [playlistPageResponse(id, { offset: 0, limit: 2, itemCount: 2, totalCount: 4, entity: true })]
+    const pl = normalizePlaylist(recorded, id)!
+    expect(pl.tracks).toHaveLength(2)
+    expect(pl.declaredItems).toBe(4)
+    expect(pl.complete).toBe(false)
   })
 })
 
@@ -525,7 +538,12 @@ describe('extract', () => {
   // totalCount-vs-recovered comparison directly, with a single response (no
   // scrolling involved), so it's independent of whether the scroll loop
   // itself works -- that's what the next test is for.
-  it('throws ExtractionIncompleteError when recovered tracks fall short of the declared total', async () => {
+  //
+  // Was: 'throws ExtractionIncompleteError when recovered tracks fall short
+  // of the declared total'. The shortfall verdict moved to normalize
+  // (Task 1); extract.ts no longer throws on it, it returns the short
+  // listing with `complete: false`. Same behavioural claim, relocated.
+  it('returns a short listing instead of throwing, marked incomplete -- playlist falls short of its declared total', async () => {
     const iCfg = loadConfig({ POOL_SIZE: '1' })
     const iPool = await createPool(iCfg)
     try {
@@ -562,15 +580,13 @@ describe('extract', () => {
         }),
       )
 
-      let caught: unknown
-      try {
-        await extract('playlist', id, iPool, iCfg)
-      } catch (err) {
-        caught = err
+      const result = await extract('playlist', id, iPool, iCfg)
+      expect(result.type).toBe('playlist')
+      if (result.type === 'playlist') {
+        expect(result.tracks.map((t) => t.name)).toEqual(['Track A', 'Track B'])
+        expect(result.declaredItems).toBe(5)
+        expect(result.complete).toBe(false)
       }
-      expect(caught).toBeInstanceOf(ExtractionIncompleteError)
-      expect(caught).not.toBeInstanceOf(ExtractionEmptyError)
-      expect(caught).not.toBeInstanceOf(NotFoundError)
     } finally {
       await iPool.close()
     }
@@ -582,7 +598,10 @@ describe('extract', () => {
   // (albumTotalCount vs playlistTotalCount) -- fix round 2 found that the
   // playlist branch alone being tested left the album branch's own
   // JSON-path wiring completely unverified.
-  it('throws ExtractionIncompleteError when an album falls short of its declared track total', async () => {
+  //
+  // Was: 'throws ExtractionIncompleteError when an album falls short of its
+  // declared track total'. Same relocation as the playlist test above.
+  it('returns a short listing instead of throwing, marked incomplete -- album falls short of its declared total', async () => {
     const iaCfg = loadConfig({ POOL_SIZE: '1' })
     const iaPool = await createPool(iaCfg)
     try {
@@ -635,15 +654,13 @@ describe('extract', () => {
         }),
       )
 
-      let caught: unknown
-      try {
-        await extract('album', id, iaPool, iaCfg)
-      } catch (err) {
-        caught = err
+      const result = await extract('album', id, iaPool, iaCfg)
+      expect(result.type).toBe('album')
+      if (result.type === 'album') {
+        expect(result.tracks.map((t) => t.name)).toEqual(['Track A', 'Track B'])
+        expect(result.declaredItems).toBe(5)
+        expect(result.complete).toBe(false)
       }
-      expect(caught).toBeInstanceOf(ExtractionIncompleteError)
-      expect(caught).not.toBeInstanceOf(ExtractionEmptyError)
-      expect(caught).not.toBeInstanceOf(NotFoundError)
     } finally {
       await iaPool.close()
     }
