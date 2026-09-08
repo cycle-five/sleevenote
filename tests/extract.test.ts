@@ -6,6 +6,7 @@ import {
   recordResponses,
   extract,
   withOffset,
+  isWindowedQuery,
   NotFoundError,
   ExtractionEmptyError,
   ExtractionSilentError,
@@ -100,6 +101,32 @@ describe('withOffset', () => {
   it('does not mutate the template it was given', () => {
     withOffset(template, 25, 100)
     expect(template.body.variables).toMatchObject({ offset: 0, limit: 25 })
+  })
+})
+
+// This is the predicate `onRequest` uses to decide whether to capture a
+// template at all. If it silently returned false for a request that should
+// have been captured, Task 6's pagination loop would fall back to the scroll
+// heuristic with nobody the wiser -- exactly today's broken behaviour, now
+// dressed up as a legitimate "partial listing". A pure unit test catches that
+// without needing a live network check.
+describe('isWindowedQuery', () => {
+  const windowedBody = { operationName: 'fetchPlaylist', variables: { uri: 'spotify:playlist:abc', offset: 0, limit: 25 } }
+
+  it('is true for a pathfinder URL whose body has variables.offset defined', () => {
+    expect(isWindowedQuery(PATHFINDER_URL, windowedBody)).toBe(true)
+  })
+
+  it('is false for a non-pathfinder URL, even with a windowed-looking body', () => {
+    expect(isWindowedQuery('https://api-partner.spotify.com/other-endpoint', windowedBody)).toBe(false)
+  })
+
+  it('is false for a pathfinder URL with no variables at all', () => {
+    expect(isWindowedQuery(PATHFINDER_URL, { operationName: 'fetchArtist' })).toBe(false)
+  })
+
+  it('is false for a pathfinder URL whose variables has no offset -- the entity-header query', () => {
+    expect(isWindowedQuery(PATHFINDER_URL, { operationName: 'fetchTrack', variables: { uri: 'spotify:track:abc' } })).toBe(false)
   })
 })
 

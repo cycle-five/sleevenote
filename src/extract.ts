@@ -57,6 +57,24 @@ export function withOffset(t: QueryTemplate, offset: number, limit: number): Que
   return { url: t.url, headers: { ...t.headers }, body: { ...t.body, variables } }
 }
 
+/**
+ * Whether a pathfinder request is the windowed query worth repeating. Only a
+ * query whose `variables.offset` is present is windowed; an entity-header
+ * query has no offset and paginating it would be meaningless.
+ *
+ * Pulled out of `onRequest` so the decision itself -- not Playwright's event
+ * plumbing -- is directly unit-testable. A body that fails to parse as JSON
+ * at all (`request.postDataJSON()` throwing) is handled by the caller, not
+ * here: this function only judges a body it was already handed.
+ */
+export function isWindowedQuery(url: string, body: unknown): boolean {
+  if (!url.startsWith(PATHFINDER_URL)) return false
+  if (body === null || typeof body !== 'object') return false
+  const variables = (body as Record<string, unknown>).variables
+  if (variables === null || typeof variables !== 'object') return false
+  return (variables as Record<string, unknown>).offset !== undefined
+}
+
 /** Summarise a capture for logging. Pure, so the summary is testable alone. */
 export function evidenceFrom(capture: Capture): ExtractionEvidence {
   const { navStatus, responses: recorded } = capture
@@ -172,17 +190,14 @@ export async function recordResponses(
   const onRequest = (request: Request): void => {
     if (template !== null) return
     if (!request.url().startsWith(PATHFINDER_URL)) return
-    let body: Record<string, unknown> | null = null
+    let body: unknown
     try {
-      body = request.postDataJSON() as Record<string, unknown>
+      body = request.postDataJSON()
     } catch {
       return // Not JSON we can repeat.
     }
-    const variables = body?.variables as Record<string, unknown> | undefined
-    // Only a windowed query is worth repeating; an entity-header query has no
-    // offset and paginating it would be meaningless.
-    if (variables === undefined || variables.offset === undefined) return
-    template = { url: request.url(), headers: request.headers(), body }
+    if (!isWindowedQuery(request.url(), body)) return
+    template = { url: request.url(), headers: request.headers(), body: body as Record<string, unknown> }
   }
   page.on('request', onRequest)
 
