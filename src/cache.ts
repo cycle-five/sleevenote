@@ -114,6 +114,7 @@ async function produceAndCache<T>(
   ttlSeconds: number,
   now: number,
   produce: () => Promise<T>,
+  acceptsCached: (value: T) => boolean,
 ): Promise<CacheResult<T>> {
   // Only `produce()` is inside this try. A failed `store.set` below means the
   // scrape succeeded and only the write didn't -- a distinct failure that must
@@ -123,13 +124,14 @@ async function produceAndCache<T>(
     value = await produce()
   } catch (err) {
     const found = await readEntry<T>(store, key)
-    if (found) {
+    if (found && acceptsCached(found.value)) {
       return {
         value: found.value,
         hit: isFresh(found, ttlSeconds, now) ? 'fresh' : 'stale',
         staleError: err,
       }
     }
+    // An entry the caller has already refused is not a fallback for it.
     throw err
   }
   const entry: Entry<T> = { value, storedAt: now }
@@ -153,15 +155,24 @@ export async function withCache<T>(opts: {
   produce: () => Promise<T>
   produceBudgetMs?: number
   failureCodec?: FailureCodec
+  /**
+   * Whether a cached value answers *this* caller's question. A cached entry
+   * that fails it is treated as a miss, so the caller produces rather than
+   * being handed something it did not ask for. Omitted means anything cached
+   * will do, which is what every caller wanted before partial listings
+   * existed.
+   */
+  acceptsCached?: (value: T) => boolean
 }): Promise<CacheResult<T>> {
   const { store, key, ttlSeconds, now, produce } = opts
   const produceBudgetMs = opts.produceBudgetMs ?? DEFAULT_PRODUCE_BUDGET_MS
   const failureCodec = opts.failureCodec ?? DEFAULT_FAILURE_CODEC
+  const acceptsCached = opts.acceptsCached ?? (() => true)
   const lockTtlSeconds = Math.ceil(produceBudgetMs / 1000)
   const lockWaitTimeoutMs = produceBudgetMs
 
   const existing = await readEntry<T>(store, key)
-  if (existing && isFresh(existing, ttlSeconds, now)) {
+  if (existing && isFresh(existing, ttlSeconds, now) && acceptsCached(existing.value)) {
     return { value: existing.value, hit: 'fresh' }
   }
 
@@ -178,7 +189,7 @@ export async function withCache<T>(opts: {
       // and the waiter's own budget still bounds the wait.
     }
     try {
-      const result = await produceAndCache(store, key, ttlSeconds, now, produce)
+      const result = await produceAndCache(store, key, ttlSeconds, now, produce, acceptsCached)
       // produce() can fail without this throwing (stale-on-error). Waiters
       // demand a *fresh* entry, so publish or they wait out the whole budget
       // for a produce that is already over.
@@ -199,7 +210,7 @@ export async function withCache<T>(opts: {
   while (Date.now() < deadline) {
     await sleep(LOCK_POLL_INTERVAL_MS)
     const candidate = await readEntry<T>(store, key)
-    if (candidate && isFresh(candidate, ttlSeconds, now)) {
+    if (candidate && isFresh(candidate, ttlSeconds, now) && acceptsCached(candidate.value)) {
       return { value: candidate.value, hit: 'fresh' }
     }
     const failed = await readFailure(store, key, failureCodec)
@@ -208,7 +219,7 @@ export async function withCache<T>(opts: {
       // itself, or the same request gets two answers depending on who won the
       // lock.
       const found = await readEntry<T>(store, key)
-      if (found) {
+      if (found && acceptsCached(found.value)) {
         return {
           value: found.value,
           hit: isFresh(found, ttlSeconds, now) ? 'fresh' : 'stale',
@@ -221,5 +232,5 @@ export async function withCache<T>(opts: {
 
   // Holder crashed or is simply slow. A slow peer must not become this
   // caller's error, so produce directly rather than waiting or failing.
-  return produceAndCache(store, key, ttlSeconds, now, produce)
+  return produceAndCache(store, key, ttlSeconds, now, produce, acceptsCached)
 }

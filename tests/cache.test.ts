@@ -326,3 +326,31 @@ describe('withCache -- a failed produce is relayed to waiters', () => {
     expect(b.value).toEqual({ n: 42 })
   })
 })
+
+describe('acceptsCached', () => {
+  it('treats an unacceptable cached entry as a miss and re-produces', async () => {
+    const store = new MemoryStore()
+    let produced = 0
+    const produce = async () => ({ complete: ++produced > 1 })
+    // Seed a partial.
+    await withCache({ store, key: 'k', ttlSeconds: 60, now: 0, produce })
+    expect(produced).toBe(1)
+    // A strict caller must not be served it.
+    const strict = await withCache({
+      store, key: 'k', ttlSeconds: 60, now: 1, produce,
+      acceptsCached: (v: any) => v.complete !== false,
+    })
+    expect(produced).toBe(2)
+    expect(strict.value.complete).toBe(true)
+  })
+
+  it('serves the same entry to a caller that accepts it', async () => {
+    const store = new MemoryStore()
+    let produced = 0
+    const produce = async () => ({ complete: false, n: ++produced })
+    await withCache({ store, key: 'k', ttlSeconds: 60, now: 0, produce })
+    const relaxed = await withCache({ store, key: 'k', ttlSeconds: 60, now: 1, produce })
+    expect(produced).toBe(1)
+    expect(relaxed.hit).toBe('fresh')
+  })
+})
