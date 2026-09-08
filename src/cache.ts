@@ -210,8 +210,18 @@ export async function withCache<T>(opts: {
   while (Date.now() < deadline) {
     await sleep(LOCK_POLL_INTERVAL_MS)
     const candidate = await readEntry<T>(store, key)
-    if (candidate && isFresh(candidate, ttlSeconds, now) && acceptsCached(candidate.value)) {
-      return { value: candidate.value, hit: 'fresh' }
+    if (candidate && isFresh(candidate, ttlSeconds, now)) {
+      if (acceptsCached(candidate.value)) return { value: candidate.value, hit: 'fresh' }
+      // A fresh entry this caller refuses ends the wait; it does not continue
+      // it. The loop below only exits on an accepted entry or a published
+      // failure, and a holder that produced a *partial* successfully writes
+      // one and publishes neither -- so a strict waiter behind it would poll
+      // out the entire produceBudgetMs (150s by default, ~6000 polls) and
+      // then produce anyway. Producing now is the same policy this caller
+      // already applied to a cached partial on the freshness check above,
+      // and is what docs/design-notes.md promises: "a cached partial reads
+      // as a miss to it, so it re-produces".
+      break
     }
     const failed = await readFailure(store, key, failureCodec)
     if (failed) {

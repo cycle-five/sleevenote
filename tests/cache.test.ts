@@ -353,4 +353,46 @@ describe('acceptsCached', () => {
     expect(produced).toBe(1)
     expect(relaxed.hit).toBe('fresh')
   })
+
+  // The waiter loop exits on an accepted entry or a published failure, and
+  // nothing else. A holder that produces a *partial* SUCCESSFULLY writes a
+  // fresh entry and publishes no failure -- so a strict waiter behind it had
+  // neither exit available and polled every 50ms for the whole
+  // produceBudgetMs (150s in production, ~6000 polls and ~12k Redis reads)
+  // before falling through and producing anyway. Impossible before partial
+  // listings existed, because a waiter took whatever was written.
+  it('stops waiting and produces once the holder writes a partial it refuses', async () => {
+    const store = new MemoryStore()
+    let holderProduced = 0
+    let waiterProduced = 0
+    const budgetMs = 2000
+
+    // Wins the lock (started first), then writes a partial and succeeds:
+    // no failure marker, so nothing else ever tells the waiter it is done.
+    const holder = withCache({
+      store, key: 'k', ttlSeconds: 60, now: 1000, produceBudgetMs: budgetMs,
+      produce: async () => {
+        await new Promise((r) => setTimeout(r, 100))
+        holderProduced++
+        return { complete: false }
+      },
+    })
+    const strictWaiter = withCache({
+      store, key: 'k', ttlSeconds: 60, now: 1000, produceBudgetMs: budgetMs,
+      produce: async () => { waiterProduced++; return { complete: true } },
+      acceptsCached: (v: any) => v.complete !== false,
+    })
+
+    const start = Date.now()
+    const [, waiter] = await Promise.all([holder, strictWaiter])
+    const elapsed = Date.now() - start
+
+    expect(holderProduced).toBe(1)
+    expect(waiterProduced).toBe(1)
+    expect(waiter.hit).toBe('miss')
+    expect(waiter.value).toEqual({ complete: true })
+    // The assertion that is the whole point: it left the poll loop as soon as
+    // the refused entry appeared (~150ms), rather than burning the budget.
+    expect(elapsed).toBeLessThan(budgetMs / 2)
+  })
 })
