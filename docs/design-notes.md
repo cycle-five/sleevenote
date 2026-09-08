@@ -141,15 +141,29 @@ entry waiting.
 **The scroll loop's new status: fallback, not dead code.** In-page pagination
 (next section) replaces scrolling as the normal path — a browser that hands
 back a reusable pathfinder request template pages by offset instead of
-hoping a scroll gesture provokes the next batch. But the template can fail to
-harvest, a page can navigate away mid-loop, or a token can expire between
-windows, and when that happens the loop still has to produce *something*
-rather than nothing: it falls back to scrolling exactly as it always has.
-This is why partial handling and pagination shipped as independent changes,
-in that order — pagination narrows *how often* a listing comes back short,
-it does not close the possibility. A caller that only ever saw complete
-listings while testing against small playlists would conclude partials were
-now unreachable and be wrong the first time the fallback fires.
+hoping a scroll gesture provokes the next batch. Two distinct degraded paths
+sit beneath that, and they are not the same failure, so they cannot share one
+explanation:
+
+- **No template to page with.** The page never issued a windowed pathfinder
+  query worth repeating, and that is decided once, up front — before the
+  pagination loop runs at all, not partway through it. *This* is what the
+  scroll loop is still for: the fallback for a page that gave us nothing to
+  harvest, and the reason it stayed rather than being deleted.
+- **A window fails mid-loop.** Navigation drops, or a token expires between
+  fetches. This does **not** fall back to scrolling — a session and a
+  template already exist; what is missing is one window's data, which
+  scrolling cannot recover. `recordResponses` instead breaks out of the
+  pagination loop and lets whatever pages already arrived flow through as a
+  short `recorded` list, which `normalize` reports as `complete: false`. This
+  is the case pagination cannot rule out, and it is why partial handling and
+  pagination shipped as independent changes, in that order: pagination
+  narrows *how often* a listing comes back short, but a mid-loop failure is
+  exactly the shortfall it cannot prevent, which is what keeps the
+  partial-listing policy above load-bearing after pagination lands. A caller
+  that only ever saw complete listings while testing against small playlists
+  would conclude partials were now unreachable and be wrong the first time a
+  window fails.
 
 ## Scrolling a virtualized list
 
