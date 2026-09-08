@@ -171,6 +171,11 @@ export class ExtractionIncompleteError extends ExtractionError {}
 // produces exactly one diagnostic line.
 export class ExtractionTimeoutError extends ExtractionError {}
 
+/** The first line of a message, for a log line that has to stay one line. */
+function firstLine(message: string): string {
+  return message.split('\n')[0] ?? message
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     // Unref'd so a pending wait cannot hold the process open at shutdown.
@@ -323,7 +328,8 @@ export async function recordResponses(
       await Promise.all(bodies)
       const total = declaredTotalFrom(kind, recorded, id)
 
-      for (const offset of pageOffsets(total, limit, first)) {
+      const offsets = pageOffsets(total, limit, first)
+      for (const [i, offset] of offsets.entries()) {
         const next = withOffset(template, offset, limit)
         try {
           await page.evaluate(async (req) => {
@@ -336,11 +342,35 @@ export async function recordResponses(
             // browser actually finished receiving.
             await res.text()
           }, next)
-        } catch {
+        } catch (err) {
           // A window we could not fetch is a short listing, not a failed
           // extraction -- holding that distinction is the whole of Phase 1.
           // Stop asking rather than hammer a page that has stopped answering;
           // `complete: false` on the result reports the shortfall honestly.
+          //
+          // But it must not be SILENT, and this line is the only place the
+          // distinction exists. `complete: false` alone cannot tell an
+          // operator "Spotify declared 50 and every window came back fine"
+          // apart from "window 2 of 4 threw" -- and since partial listings
+          // shipped, the second is handed to an opt-in caller looking exactly
+          // like the first. A truncated listing that reads as a whole one is
+          // the failure this service exists to prevent; it should not be
+          // reintroduced one rung down.
+          //
+          // `console.warn` and not a request logger because extraction has no
+          // logger handle -- errors carry [`ExtractionEvidence`] to the HTTP
+          // layer instead, and that route is closed here precisely because
+          // this path does not throw. It is how store.ts reports a connection
+          // error for the same reason. `id` is the correlation key.
+          console.warn(
+            `[extract] ${kind} ${id}: window ${i + 1} of ${offsets.length} failed at offset ${offset} ` +
+              `(limit ${limit}, declared total ${total ?? 'unknown'}) -- listing will be short: ` +
+              // First line only: Playwright folds a page-side stack into
+              // `message`, and those frames point into Spotify's bundle, not
+              // ours. A warn that spans six lines in among pino's JSON costs
+              // more legibility than the frames buy back.
+              firstLine(err instanceof Error ? err.message : String(err)),
+          )
           break
         }
       }
