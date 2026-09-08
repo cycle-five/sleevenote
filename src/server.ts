@@ -258,6 +258,21 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       cacheHits.inc({ type: kind, result: result.hit })
 
       const value = result.value as { complete?: boolean; declaredItems?: number | null; tracks?: unknown[] }
+
+      // Best effort, and deliberately not awaited into the response path's
+      // error handling: a listing that arrived is the answer whether or not
+      // its tracks got cached. Fanning out ahead of the completeness check
+      // below, not after it, is deliberate: whether the caller opted into a
+      // partial listing governs what the caller receives, not what we
+      // learned from the scrape. A short listing is cached even when a
+      // strict caller gets a 502 for it, precisely so a later opt-in caller
+      // doesn't re-pay for the scrape -- fan-out is that same argument
+      // applied to the tracks the listing already contains, which is why it
+      // must not skip on the 502 path either.
+      if (kind !== 'track') {
+        void fanOutTracks(value as unknown as Album | Playlist)
+      }
+
       if (value.complete === false) {
         partialListings.inc({ type: kind, served: partialAllowed ? 'yes' : 'no' })
         if (!partialAllowed) {
@@ -273,14 +288,6 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
               `-- retry with ?partial=allow to take what was recovered`,
           }
         }
-      }
-
-      // Best effort, and deliberately not awaited into the response path's
-      // error handling: a listing that arrived is the answer whether or not
-      // its tracks got cached. Partial listings fan out too -- the tracks
-      // that did arrive are real.
-      if (kind !== 'track') {
-        void fanOutTracks(value as unknown as Album | Playlist)
       }
       return result.value
     } catch (err) {

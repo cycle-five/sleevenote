@@ -671,4 +671,20 @@ describe('fan-out', () => {
     expect(raw).not.toBeNull()
     expect(JSON.parse(raw!).value.name).toBe('Track 0')
   })
+
+  // Whether the caller opted into a partial listing governs what the caller
+  // receives, not what we learned from the scrape -- a strict caller gets a
+  // 502 for the same short listing that an opt-in caller would get a 200
+  // for, and both cases already cache the listing itself for that reason.
+  // Fan-out must not disagree with that by discarding the tracks just
+  // because this particular request didn't opt in to seeing them.
+  it('fans out even when a strict caller gets a 502 for a short listing', async () => {
+    const store = new MemoryStore()
+    const app = server(async () => shortPlaylist(), store)
+    const res = await app.inject({ url: '/v1/playlist/abc' })
+    expect(res.statusCode).toBe(502)
+    const raw = await store.get(cacheKey('track', 't0'))
+    expect(raw).not.toBeNull()
+    expect(JSON.parse(raw!).value.name).toBe('Track 0')
+  })
 })
