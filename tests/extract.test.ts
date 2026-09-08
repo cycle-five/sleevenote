@@ -5,6 +5,7 @@ import { loadConfig } from '../src/config.js'
 import {
   recordResponses,
   extract,
+  withOffset,
   NotFoundError,
   ExtractionEmptyError,
   ExtractionSilentError,
@@ -74,6 +75,31 @@ describe('recordResponses', () => {
     expect(bodies).toContainEqual({ hello: 'world' })
     expect(capture.responses.every((r) => r.url.endsWith('.json'))).toBe(true)
     expect(capture.navStatus).toBe(200)
+  })
+})
+
+describe('withOffset', () => {
+  const template = {
+    url: PATHFINDER_URL,
+    headers: { authorization: 'Bearer t' },
+    body: {
+      operationName: 'fetchPlaylist',
+      variables: { uri: 'spotify:playlist:abc', offset: 0, limit: 25 },
+      extensions: { persistedQuery: { sha256Hash: 'deadbeef' } },
+    },
+  }
+
+  it('moves the window without disturbing anything else', () => {
+    const next = withOffset(template, 25, 100)
+    expect(next.body.variables).toMatchObject({ uri: 'spotify:playlist:abc', offset: 25, limit: 100 })
+    expect(next.body.operationName).toBe('fetchPlaylist')
+    expect(next.body.extensions).toEqual(template.body.extensions)
+    expect(next.headers).toEqual(template.headers)
+  })
+
+  it('does not mutate the template it was given', () => {
+    withOffset(template, 25, 100)
+    expect(template.body.variables).toMatchObject({ offset: 0, limit: 25 })
   })
 })
 

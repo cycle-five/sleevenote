@@ -1,4 +1,4 @@
-import type { Page, Response } from 'playwright'
+import type { Page, Request, Response } from 'playwright'
 import type { Pool } from './browser.js'
 import type { Config } from './config.js'
 import { PATHFINDER_URL, normalizeAlbum, normalizePlaylist, normalizeTrack } from './normalize.js'
@@ -35,6 +35,26 @@ export type Capture = {
   /** Status of the navigation itself; `null` when the browser reported none. */
   navStatus: number | null
   responses: Recorded[]
+  /** The first windowed pathfinder request the page issued, if any. See [`QueryTemplate`]. */
+  template: QueryTemplate | null
+}
+
+/**
+ * The first pathfinder request the page issues, kept so we can repeat it with
+ * a different window. Everything that authenticates the call -- bearer token,
+ * client token, persisted-query hash -- is already in it, which is why this is
+ * harvested rather than constructed.
+ */
+export type QueryTemplate = {
+  url: string
+  headers: Record<string, string>
+  body: Record<string, unknown>
+}
+
+/** The same query over a different window. Returns a copy; never mutates. */
+export function withOffset(t: QueryTemplate, offset: number, limit: number): QueryTemplate {
+  const variables = { ...(t.body.variables as Record<string, unknown>), offset, limit }
+  return { url: t.url, headers: { ...t.headers }, body: { ...t.body, variables } }
 }
 
 /** Summarise a capture for logging. Pure, so the summary is testable alone. */
@@ -148,6 +168,24 @@ export async function recordResponses(
   }
   page.on('response', onResponse)
 
+  let template: QueryTemplate | null = null
+  const onRequest = (request: Request): void => {
+    if (template !== null) return
+    if (!request.url().startsWith(PATHFINDER_URL)) return
+    let body: Record<string, unknown> | null = null
+    try {
+      body = request.postDataJSON() as Record<string, unknown>
+    } catch {
+      return // Not JSON we can repeat.
+    }
+    const variables = body?.variables as Record<string, unknown> | undefined
+    // Only a windowed query is worth repeating; an entity-header query has no
+    // offset and paginating it would be meaningless.
+    if (variables === undefined || variables.offset === undefined) return
+    template = { url: request.url(), headers: request.headers(), body }
+  }
+  page.on('request', onRequest)
+
   try {
     const navigation = await page.goto(url, { waitUntil: 'networkidle', timeout: navTimeoutMs })
     navStatus = navigation?.status() ?? null
@@ -157,7 +195,7 @@ export async function recordResponses(
     // `=== 404`) -- and serves a "Page not found" shell. There is no
     // virtualized list to page through, so the loop below and its 3s settle
     // would be four seconds spent scrolling a placeholder.
-    if (navStatus !== null && navStatus >= 400) return { navStatus, responses: recorded }
+    if (navStatus !== null && navStatus >= 400) return { navStatus, responses: recorded, template }
 
     // Wait for the data itself, not for a proxy for it.
     //
@@ -195,9 +233,10 @@ export async function recordResponses(
     // pushing into this call's abandoned array for the rest of the page's
     // life -- a per-lease leak.
     page.off('response', onResponse)
+    page.off('request', onRequest)
   }
 
-  return { navStatus, responses: recorded }
+  return { navStatus, responses: recorded, template }
 }
 
 function entityUrl(kind: 'track' | 'album' | 'playlist', id: string): string {
