@@ -10,6 +10,7 @@ import type { Pool } from './browser.js'
 import type { Config } from './config.js'
 import type { Track, Album, Playlist } from './types.js'
 import { cacheKey, withCache, type FailureCodec } from './cache.js'
+import { tracksToCache } from './fanout.js'
 import {
   ExtractionError,
   NotFoundError,
@@ -18,7 +19,7 @@ import {
   ExtractionIncompleteError,
   ExtractionTimeoutError,
 } from './extract.js'
-import { cacheHits, scrapeDuration, scrapeFailures, extractionEmpty, registry } from './metrics.js'
+import { cacheHits, scrapeDuration, scrapeFailures, extractionEmpty, partialListings, registry } from './metrics.js'
 
 export type ExtractFn = (
   kind: 'track' | 'album' | 'playlist',
@@ -190,9 +191,40 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     }
   }
 
+  // Best effort: a listing that arrived is the answer whether or not its
+  // tracks got cached. One failed write must not abandon the rest, and none
+  // of them may reach the caller -- see the call site's comment.
+  async function fanOutTracks(entity: Album | Playlist): Promise<void> {
+    const storedAt = now()
+    // Inside the try, not in the `for...of` head. This call is invoked with
+    // `void`, so anything it throws becomes an unhandled rejection, and
+    // src/index.ts installs no handler for those -- Node terminates the
+    // process. `tracksToCache` reads `entity.tracks` and each `track.url`,
+    // and the value reaching it is only cast, never validated (readEntry
+    // tolerates corrupt JSON, not wrong-shaped JSON), so a listing without a
+    // `tracks` array is a crash and not a skipped optimisation.
+    let tracks: Track[]
+    try {
+      tracks = tracksToCache(entity)
+    } catch (err) {
+      // warn, not debug: a listing this malformed is a shape change or a
+      // poisoned entry, not the ordinary "one write didn't land" below.
+      fastify.log.warn({ err }, 'fan-out skipped: listing had no usable track list')
+      return
+    }
+    for (const track of tracks) {
+      try {
+        await store.set(cacheKey('track', track.id), JSON.stringify({ value: track, storedAt }), cfg.ttl.track)
+      } catch (err) {
+        fastify.log.debug({ id: track.id, err }, 'fan-out write failed')
+      }
+    }
+  }
+
   async function handleEntity(
     kind: EntityKind,
     id: string,
+    partialAllowed: boolean,
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<unknown> {
@@ -218,6 +250,9 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       // defaults to a constant that merely happens to match loadConfig's
       // default, so omitting it breaks single-flight under any non-default
       // PRODUCE_BUDGET_MS. Guarded by a test of the same name.
+      // A track has no listing, so `complete` never appears on one -- a
+      // predicate applied to tracks would refuse every cached track forever.
+      const strictListing = kind !== 'track' && !partialAllowed
       const result = await withCache({
         store,
         key: cacheKey(kind, id),
@@ -226,6 +261,9 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         produce: () => timedExtract(kind, id),
         produceBudgetMs: cfg.produceBudgetMs,
         failureCodec: failureCodecFor(cfg),
+        acceptsCached: strictListing
+          ? (v: unknown) => (v as { complete?: boolean }).complete !== false
+          : undefined,
       })
       // Stale-on-error serves a value while discarding the failure that
       // caused the fallback. Record it without changing the response.
@@ -234,6 +272,47 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       }
       reply.header('X-Cache', result.hit)
       cacheHits.inc({ type: kind, result: result.hit })
+
+      const value = result.value as { complete?: boolean; declaredItems?: number | null; tracks?: unknown[] }
+
+      // Best effort, and deliberately not awaited into the response path's
+      // error handling: a listing that arrived is the answer whether or not
+      // its tracks got cached. Fanning out ahead of the completeness check
+      // below, not after it, is deliberate: whether the caller opted into a
+      // partial listing governs what the caller receives, not what we
+      // learned from the scrape. A short listing is cached even when a
+      // strict caller gets a 502 for it, precisely so a later opt-in caller
+      // doesn't re-pay for the scrape -- fan-out is that same argument
+      // applied to the tracks the listing already contains, which is why it
+      // must not skip on the 502 path either.
+      //
+      // Gated on `hit === 'miss'`, which is exactly "we just produced and
+      // wrote this": produceAndCache returns 'miss' only after produce()
+      // resolved, and returns 'fresh'/'stale' with a staleError on the
+      // fallback path. Without the gate every cache HIT re-issued one Redis
+      // SET per track -- 50 of them, sequentially, for the whole 4-hour
+      // playlist TTL -- writing back what it had just read. The strict-caller
+      // 502 path below still fans out, because that path produced too.
+      if (kind !== 'track' && result.hit === 'miss') {
+        void fanOutTracks(value as unknown as Album | Playlist)
+      }
+
+      if (value.complete === false) {
+        partialListings.inc({ type: kind, served: partialAllowed ? 'yes' : 'no' })
+        if (!partialAllowed) {
+          // The listing is cached either way: an opt-in caller behind us
+          // gets it without paying for the scrape again.
+          reply.code(502)
+          const seen = value.tracks?.length ?? 0
+          return {
+            error: 'extraction_incomplete',
+            id,
+            message:
+              `${kind} ${id} saw ${seen} of ${value.declaredItems} declared tracks ` +
+              `-- retry with ?partial=allow to take what was recovered`,
+          }
+        }
+      }
       return result.value
     } catch (err) {
       // Keeping these four apart is the point. Collapsing any pair into one
@@ -286,8 +365,9 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   }
 
   for (const kind of ENTITY_KINDS) {
-    fastify.get<{ Params: { id: string } }>(`/v1/${kind}/:id`, async (req, reply) =>
-      handleEntity(kind, req.params.id, req, reply),
+    fastify.get<{ Params: { id: string }; Querystring: { partial?: string } }>(
+      `/v1/${kind}/:id`,
+      async (req, reply) => handleEntity(kind, req.params.id, req.query.partial === 'allow', req, reply),
     )
   }
 

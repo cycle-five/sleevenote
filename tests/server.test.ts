@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildServer } from '../src/server.js'
-import { MemoryStore } from '../src/cache.js'
+import { MemoryStore, cacheKey } from '../src/cache.js'
 import { loadConfig } from '../src/config.js'
 import {
   NotFoundError,
@@ -43,7 +43,85 @@ function server(extract: any, store = new MemoryStore()) {
   return buildServer({ cfg, store, pool: fakePool as any, extract })
 }
 
+// Fan-out is deliberately not awaited into the response path, so it can still
+// be running when inject() resolves. Anything asserting on what it did (or on
+// what it threw) has to give it a turn first.
+function settle(): Promise<void> {
+  return new Promise((r) => setTimeout(r, 10))
+}
+
 const TRACK = { id: 'abc', type: 'track', name: 'Hideaway', artists: [{ name: 'Kiesza', id: null }], album: null, durationMs: null, url: 'https://open.spotify.com/track/abc' }
+
+function aTrack() {
+  return TRACK
+}
+
+function makePlaylistTrack(i: number) {
+  return { id: `t${i}`, type: 'track', name: `Track ${i}`, artists: [{ name: 'Someone', id: null }], album: null, durationMs: null, url: `https://open.spotify.com/track/t${i}` }
+}
+
+// declaredItems: 50, complete: false -- exactly the shape a truncated scroll
+// leaves behind (Task 1/2): the listing came back, it just didn't see
+// everything Spotify declared.
+function shortPlaylist() {
+  return {
+    id: 'abc',
+    type: 'playlist',
+    name: 'A Playlist',
+    owner: 'someone',
+    image: null,
+    url: 'https://open.spotify.com/playlist/abc',
+    tracks: Array.from({ length: 25 }, (_, i) => makePlaylistTrack(i)),
+    unresolvedItems: 0,
+    declaredItems: 50,
+    complete: false,
+  }
+}
+
+function fullPlaylist() {
+  return {
+    id: 'abc',
+    type: 'playlist',
+    name: 'A Playlist',
+    owner: 'someone',
+    image: null,
+    url: 'https://open.spotify.com/playlist/abc',
+    tracks: Array.from({ length: 50 }, (_, i) => makePlaylistTrack(i)),
+    unresolvedItems: 0,
+    declaredItems: 50,
+    complete: true,
+  }
+}
+
+// Album tracks list with `album: null` (see fanout.ts) -- that is the point:
+// fan-out is what attaches the parent, so this fixture deliberately leaves it
+// unset rather than pre-filling what the code under test is meant to produce.
+function albumTrack(i: number, name: string) {
+  return {
+    id: `t${i}`,
+    type: 'track',
+    name,
+    artists: [{ name: 'Someone', id: null }],
+    album: null,
+    durationMs: null,
+    url: `https://open.spotify.com/track/t${i}`,
+  }
+}
+
+function albumWithTwoTracks() {
+  return {
+    id: 'al1',
+    type: 'album',
+    name: 'An Album',
+    artists: [{ name: 'Someone', id: null }],
+    image: null,
+    url: 'https://open.spotify.com/album/al1',
+    tracks: [albumTrack(1, 'King Creole'), albumTrack(2, 'Trouble')],
+    unresolvedItems: 0,
+    declaredItems: 2,
+    complete: true,
+  }
+}
 
 describe('GET /health', () => {
   it('returns the exact origin string when Redis and the pool are up', async () => {
@@ -142,6 +220,56 @@ describe('ExtractionIncompleteError', () => {
 
     expect(res.statusCode).toBe(502)
     expect(await store.get('v1:playlist:abc')).toBeNull()
+  })
+})
+
+describe('?partial=allow', () => {
+  // The default: a short listing 502s exactly as a fully-failed extraction
+  // would, per docs/design-notes.md -- a truncated playlist looks identical
+  // to a complete one, so silently serving it as a 200 recreates the failure
+  // this whole design exists to catch. Policy belongs to the caller.
+  it('502s a short listing by default', async () => {
+    const app = server(async () => shortPlaylist())
+    const res = await app.inject({ url: '/v1/playlist/abc' })
+    expect(res.statusCode).toBe(502)
+    expect(res.json().error).toBe('extraction_incomplete')
+  })
+
+  it('serves a short listing to a caller that asked for one', async () => {
+    const app = server(async () => shortPlaylist())
+    const res = await app.inject({ url: '/v1/playlist/abc?partial=allow' })
+    expect(res.statusCode).toBe(200)
+    expect(res.json().complete).toBe(false)
+    expect(res.json().declaredItems).toBe(50)
+    expect(res.json().tracks).toHaveLength(25)
+  })
+
+  // The listing is cached either way -- withCache's write happens before the
+  // strict/partial decision is made -- so a strict caller arriving after a
+  // partial-accepting one must not be handed that cached partial. It has to
+  // treat it as a miss and re-produce.
+  it('re-produces rather than serving a cached partial to a strict caller', async () => {
+    const store = new MemoryStore()
+    let calls = 0
+    const extract = async () => {
+      calls++
+      return calls === 1 ? shortPlaylist() : fullPlaylist()
+    }
+    const app = server(extract, store)
+    await app.inject({ url: '/v1/playlist/abc?partial=allow' }) // caches the partial
+    const res = await app.inject({ url: '/v1/playlist/abc' }) // strict
+    expect(calls).toBe(2)
+    expect(res.statusCode).toBe(200)
+    expect(res.json().complete).toBe(true)
+  })
+
+  // A track has no listing, so `complete` never appears on one. A client
+  // that sets the flag uniformly across every route should not have to
+  // special-case the one kind it does nothing on.
+  it('ignores the flag on a track, which has no listing', async () => {
+    const app = server(async () => aTrack())
+    const res = await app.inject({ url: '/v1/track/abc?partial=allow' })
+    expect(res.statusCode).toBe(200)
   })
 })
 
@@ -506,5 +634,110 @@ describe('a silent extraction is our failure, not the entity being absent', () =
       expect(res.statusCode).toBe(502)
       expect(res.json().error).toBe('extraction_silent')
     }
+  })
+})
+
+// An album or playlist response already contains every track in it, fully
+// resolved. Fan-out is what keeps a later /v1/track/:id for one of those
+// tracks from paying for a whole browser scrape it doesn't need.
+describe('fan-out', () => {
+  it('caches each listed track under its own id', async () => {
+    const store = new MemoryStore()
+    const app = server(async () => albumWithTwoTracks(), store)
+    await app.inject({ url: '/v1/album/al1' })
+    const raw = await store.get(cacheKey('track', 't1'))
+    expect(raw).not.toBeNull()
+    expect(JSON.parse(raw!).value.name).toBe('King Creole')
+  })
+
+  it('does not fail the request when a fan-out write fails', async () => {
+    // The listing is the answer. A cache write that did not happen is a
+    // missed optimisation, not a failed lookup. Only the fan-out targets
+    // (the track keys) are broken here -- an unscoped failure would also
+    // break the album's own primary cache write and 502 the request for a
+    // reason unrelated to fan-out, which is not what this test is about
+    // (see the "store.set failure ... surfaces as an error" test above).
+    const store = new MemoryStore()
+    const originalSet = store.set.bind(store)
+    store.set = async (key: string, value: string, ttlSeconds: number) => {
+      if (key.startsWith(cacheKey('track', ''))) throw new StoreError('down')
+      return originalSet(key, value, ttlSeconds)
+    }
+    const app = server(async () => albumWithTwoTracks(), store)
+    const res = await app.inject({ url: '/v1/album/al1' })
+    expect(res.statusCode).toBe(200)
+  })
+
+  // complete: false must not gate fan-out -- the tracks that did arrive in a
+  // truncated listing are real entities, not provisional ones.
+  it('fans out the tracks that did arrive from a partial listing', async () => {
+    const store = new MemoryStore()
+    const app = server(async () => shortPlaylist(), store)
+    await app.inject({ url: '/v1/playlist/abc?partial=allow' })
+    const raw = await store.get(cacheKey('track', 't0'))
+    expect(raw).not.toBeNull()
+    expect(JSON.parse(raw!).value.name).toBe('Track 0')
+  })
+
+  // Whether the caller opted into a partial listing governs what the caller
+  // receives, not what we learned from the scrape -- a strict caller gets a
+  // 502 for the same short listing that an opt-in caller would get a 200
+  // for, and both cases already cache the listing itself for that reason.
+  // Fan-out must not disagree with that by discarding the tracks just
+  // because this particular request didn't opt in to seeing them.
+  it('fans out even when a strict caller gets a 502 for a short listing', async () => {
+    const store = new MemoryStore()
+    const app = server(async () => shortPlaylist(), store)
+    const res = await app.inject({ url: '/v1/playlist/abc' })
+    expect(res.statusCode).toBe(502)
+    const raw = await store.get(cacheKey('track', 't0'))
+    expect(raw).not.toBeNull()
+    expect(JSON.parse(raw!).value.name).toBe('Track 0')
+  })
+
+  // Fan-out is a consequence of having just PRODUCED a listing, not of having
+  // answered a request for one. Ungated, a cache hit on a 50-track playlist
+  // re-issued 50 sequential Redis SETs writing back what it had just read,
+  // on every request for the whole 4-hour TTL. `hit === 'miss'` is exactly
+  // "we just produced and wrote this": produceAndCache returns 'miss' only
+  // after produce() resolved.
+  it('fans out on a produce, not again on every cache hit', async () => {
+    const store = new MemoryStore()
+    let trackWrites = 0
+    const originalSet = store.set.bind(store)
+    store.set = async (key: string, value: string, ttlSeconds: number) => {
+      if (key.startsWith(cacheKey('track', ''))) trackWrites++
+      return originalSet(key, value, ttlSeconds)
+    }
+    const app = server(async () => albumWithTwoTracks(), store)
+
+    const first = await app.inject({ url: '/v1/album/al1' })
+    expect(first.headers['x-cache']).toBe('miss')
+    await settle()
+    expect(trackWrites).toBe(2)
+
+    const second = await app.inject({ url: '/v1/album/al1' })
+    expect(second.headers['x-cache']).toBe('fresh')
+    await settle()
+    expect(trackWrites).toBe(2)
+  })
+
+  // `tracksToCache(entity)` used to sit in the `for...of` head, OUTSIDE the
+  // try. Fan-out is invoked with `void`, so anything thrown there is an
+  // unhandled rejection, and src/index.ts installs no `unhandledRejection`
+  // handler -- Node's default is to terminate the process. The value is only
+  // cast, never validated (readEntry tolerates corrupt JSON, not
+  // wrong-shaped JSON), so a listing with no `tracks` array is reachable and
+  // took the whole service down. Vitest reports an unhandled rejection as a
+  // run failure, which is what makes this a regression test and not a
+  // tautology.
+  it('does not crash the process on a listing with no track list', async () => {
+    const store = new MemoryStore()
+    const shapeless = { id: 'abc', type: 'playlist', name: 'A Playlist', declaredItems: null }
+    const app = server(async () => shapeless, store)
+    const res = await app.inject({ url: '/v1/playlist/abc' })
+    expect(res.statusCode).toBe(200)
+    // The rejection, if there is one, happens after the response resolves.
+    await settle()
   })
 })

@@ -1,13 +1,18 @@
-import { describe, it, expect, afterAll } from 'vitest'
+import { describe, it, expect, afterAll, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
+import type { Page, Request } from 'playwright'
 import { createPool } from '../src/browser.js'
 import { loadConfig } from '../src/config.js'
 import {
   recordResponses,
   extract,
+  withOffset,
+  isWindowedQuery,
+  pageOffsets,
+  declaredTotalFrom,
+  MAX_PAGES,
   NotFoundError,
   ExtractionEmptyError,
-  ExtractionIncompleteError,
   ExtractionSilentError,
 } from '../src/extract.js'
 import {
@@ -15,6 +20,7 @@ import {
   normalizePlaylist,
   playlistItemCount,
   playlistTotalCount,
+  albumTotalCount,
 } from '../src/normalize.js'
 import type { Recorded } from '../src/types.js'
 
@@ -68,13 +74,86 @@ describe('recordResponses', () => {
       return route.fulfill({ status: 200, contentType: 'text/plain', body: 'not json' })
     })
 
-    const capture = await recordResponses(lease.page, 'https://fake.test/page', 10_000, 500)
+    const capture = await recordResponses(lease.page, 'https://fake.test/page', 'track', 'fakeId', 10_000, 500)
     await lease.release()
 
     const bodies = capture.responses.map((r) => r.body)
     expect(bodies).toContainEqual({ hello: 'world' })
     expect(capture.responses.every((r) => r.url.endsWith('.json'))).toBe(true)
     expect(capture.navStatus).toBe(200)
+  })
+})
+
+describe('withOffset', () => {
+  const template = {
+    url: PATHFINDER_URL,
+    headers: { authorization: 'Bearer t' },
+    body: {
+      operationName: 'fetchPlaylist',
+      variables: { uri: 'spotify:playlist:abc', offset: 0, limit: 25 },
+      extensions: { persistedQuery: { sha256Hash: 'deadbeef' } },
+    },
+  }
+
+  it('moves the window without disturbing anything else', () => {
+    const next = withOffset(template, 25, 100)
+    expect(next.body.variables).toMatchObject({ uri: 'spotify:playlist:abc', offset: 25, limit: 100 })
+    expect(next.body.operationName).toBe('fetchPlaylist')
+    expect(next.body.extensions).toEqual(template.body.extensions)
+    expect(next.headers).toEqual(template.headers)
+  })
+
+  it('does not mutate the template it was given', () => {
+    withOffset(template, 25, 100)
+    expect(template.body.variables).toMatchObject({ offset: 0, limit: 25 })
+  })
+})
+
+// This is the predicate `onRequest` uses to decide whether to capture a
+// template at all. If it silently returned false for a request that should
+// have been captured, Task 6's pagination loop would fall back to the scroll
+// heuristic with nobody the wiser -- exactly today's broken behaviour, now
+// dressed up as a legitimate "partial listing". A pure unit test catches that
+// without needing a live network check.
+describe('isWindowedQuery', () => {
+  const windowedBody = { operationName: 'fetchPlaylist', variables: { uri: 'spotify:playlist:abc', offset: 0, limit: 25 } }
+
+  it('is true for a pathfinder URL whose body has variables.offset defined', () => {
+    expect(isWindowedQuery(PATHFINDER_URL, windowedBody)).toBe(true)
+  })
+
+  it('is false for a non-pathfinder URL, even with a windowed-looking body', () => {
+    expect(isWindowedQuery('https://api-partner.spotify.com/other-endpoint', windowedBody)).toBe(false)
+  })
+
+  it('is false for a pathfinder URL with no variables at all', () => {
+    expect(isWindowedQuery(PATHFINDER_URL, { operationName: 'fetchArtist' })).toBe(false)
+  })
+
+  it('is false for a pathfinder URL whose variables has no offset -- the entity-header query', () => {
+    expect(isWindowedQuery(PATHFINDER_URL, { operationName: 'fetchTrack', variables: { uri: 'spotify:track:abc' } })).toBe(false)
+  })
+})
+
+// The arithmetic of the pagination loop, separated from the browser so it can
+// be tested at all. Getting `pageOffsets` wrong is not a visible failure once
+// Phase 1 shipped: asking for too few pages returns a short listing, which is
+// now a legitimate answer to an opt-in caller, so a loop that under-runs looks
+// exactly like the feature working. MAX_PAGES matters for the opposite reason
+// -- the total it walks toward is a number Spotify supplies.
+describe('pageOffsets', () => {
+  it('walks the window to the declared total and stops', () => {
+    expect(pageOffsets(50, 25, 0)).toEqual([25])          // 25 already seen
+    expect(pageOffsets(150, 50, 0)).toEqual([50, 100])
+    expect(pageOffsets(25, 100, 0)).toEqual([])           // one page covered it
+  })
+
+  it('is bounded even against an absurd declared total', () => {
+    expect(pageOffsets(1_000_000, 1, 0).length).toBeLessThanOrEqual(MAX_PAGES)
+  })
+
+  it('asks for nothing when the total is unknown', () => {
+    expect(pageOffsets(null, 25, 0)).toEqual([])
   })
 })
 
@@ -109,6 +188,75 @@ function playlistPageResponse(
       }
     : { __typename: 'Playlist', content }
   return { url: PATHFINDER_URL, status: 200, body: { data: { playlistV2 } } }
+}
+
+/** The bearer the harvested template has to carry through to every repeat. */
+const HARVEST_TOKEN = 'Bearer BQD-fake-harvested-token'
+
+/**
+ * A page that issues exactly ONE pathfinder request, shaped like the web
+ * player's own: a POST whose JSON body carries `operationName`, a `variables`
+ * object with `uri`/`offset`/`limit`, and the persisted-query hash, sent with
+ * the bearer and client tokens that authenticate it. That is the request
+ * `onRequest` has to recognise and `withOffset` has to be able to repeat.
+ *
+ * Nothing on this page is scrollable, deliberately: if the harvest fails
+ * there is no second strategy to quietly rescue the listing, so the failure
+ * shows up as a short listing rather than as a slower path to the same
+ * answer.
+ */
+function windowedQueryPage(id: string, limit: number): string {
+  return `<html><body><script>
+    fetch('${PATHFINDER_URL}', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'authorization': '${HARVEST_TOKEN}',
+        'client-token': 'AABfakeClientToken',
+      },
+      body: JSON.stringify({
+        operationName: 'fetchPlaylistContents',
+        variables: { uri: 'spotify:playlist:${id}', offset: 0, limit: ${limit} },
+        extensions: { persistedQuery: { version: 1, sha256Hash: 'deadbeefdeadbeef' } },
+      }),
+    });
+  </script></body></html>`
+}
+
+/**
+ * Route the pathfinder endpoint, answering the CORS preflight first.
+ *
+ * A cross-origin POST carrying `authorization` and `content-type:
+ * application/json` provokes an OPTIONS preflight, and a route that ignores
+ * it fails the fetch outright -- so the page would issue no windowed query at
+ * all and the test would be measuring the fallback. `respond` is called only
+ * for the real POST, with the window it asked for.
+ */
+async function routePathfinder(
+  page: Page,
+  respond: (vars: { offset: number; limit: number }, req: Request) => unknown,
+): Promise<void> {
+  await page.route(PATHFINDER_URL, (route) => {
+    const req = route.request()
+    if (req.method() === 'OPTIONS') {
+      return route.fulfill({
+        status: 204,
+        headers: {
+          'access-control-allow-origin': '*',
+          'access-control-allow-methods': 'POST, OPTIONS',
+          // Reflected rather than '*': a wildcard does not cover
+          // `Authorization`, which is exactly the header being repeated here.
+          'access-control-allow-headers': req.headers()['access-control-request-headers'] ?? '*',
+        },
+      })
+    }
+    const vars = (req.postDataJSON() as { variables: { offset: number; limit: number } }).variables
+    return route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+      body: JSON.stringify(respond(vars, req)),
+    })
+  })
 }
 
 // Fix round 4 (corrected): the first attempt at this fix computed `seen` as
@@ -193,6 +341,20 @@ describe('playlist pagination: dedup by absolute index, not sum or naive concate
     const smallPlaylist = normalizePlaylist(small, smallId)
     expect(new Set(largePlaylist!.tracks.map((t) => t.id)).size).toBe(largePlaylist!.tracks.length)
     expect(new Set(smallPlaylist!.tracks.map((t) => t.id)).size).toBe(smallPlaylist!.tracks.length)
+  })
+
+  // The shortfall verdict now lives entirely in normalize (Task 1):
+  // `complete` is derivable from `declaredItems` and `tracks.length` alone,
+  // with no involvement from extract.ts. This is a short listing, not an
+  // empty one, so it must come back rather than throw.
+  it('returns a short listing instead of throwing, marked incomplete', () => {
+    const id = '37i9dQZF1DXcBWIGoYBM5M'
+    // Declares four, records two: the shape a truncated scroll produces.
+    const recorded = [playlistPageResponse(id, { offset: 0, limit: 2, itemCount: 2, totalCount: 4, entity: true })]
+    const pl = normalizePlaylist(recorded, id)!
+    expect(pl.tracks).toHaveLength(2)
+    expect(pl.declaredItems).toBe(4)
+    expect(pl.complete).toBe(false)
   })
 })
 
@@ -525,7 +687,12 @@ describe('extract', () => {
   // totalCount-vs-recovered comparison directly, with a single response (no
   // scrolling involved), so it's independent of whether the scroll loop
   // itself works -- that's what the next test is for.
-  it('throws ExtractionIncompleteError when recovered tracks fall short of the declared total', async () => {
+  //
+  // Was: 'throws ExtractionIncompleteError when recovered tracks fall short
+  // of the declared total'. The shortfall verdict moved to normalize
+  // (Task 1); extract.ts no longer throws on it, it returns the short
+  // listing with `complete: false`. Same behavioural claim, relocated.
+  it('returns a short listing instead of throwing, marked incomplete -- playlist falls short of its declared total', async () => {
     const iCfg = loadConfig({ POOL_SIZE: '1' })
     const iPool = await createPool(iCfg)
     try {
@@ -562,15 +729,13 @@ describe('extract', () => {
         }),
       )
 
-      let caught: unknown
-      try {
-        await extract('playlist', id, iPool, iCfg)
-      } catch (err) {
-        caught = err
+      const result = await extract('playlist', id, iPool, iCfg)
+      expect(result.type).toBe('playlist')
+      if (result.type === 'playlist') {
+        expect(result.tracks.map((t) => t.name)).toEqual(['Track A', 'Track B'])
+        expect(result.declaredItems).toBe(5)
+        expect(result.complete).toBe(false)
       }
-      expect(caught).toBeInstanceOf(ExtractionIncompleteError)
-      expect(caught).not.toBeInstanceOf(ExtractionEmptyError)
-      expect(caught).not.toBeInstanceOf(NotFoundError)
     } finally {
       await iPool.close()
     }
@@ -582,7 +747,10 @@ describe('extract', () => {
   // (albumTotalCount vs playlistTotalCount) -- fix round 2 found that the
   // playlist branch alone being tested left the album branch's own
   // JSON-path wiring completely unverified.
-  it('throws ExtractionIncompleteError when an album falls short of its declared track total', async () => {
+  //
+  // Was: 'throws ExtractionIncompleteError when an album falls short of its
+  // declared track total'. Same relocation as the playlist test above.
+  it('returns a short listing instead of throwing, marked incomplete -- album falls short of its declared total', async () => {
     const iaCfg = loadConfig({ POOL_SIZE: '1' })
     const iaPool = await createPool(iaCfg)
     try {
@@ -635,15 +803,13 @@ describe('extract', () => {
         }),
       )
 
-      let caught: unknown
-      try {
-        await extract('album', id, iaPool, iaCfg)
-      } catch (err) {
-        caught = err
+      const result = await extract('album', id, iaPool, iaCfg)
+      expect(result.type).toBe('album')
+      if (result.type === 'album') {
+        expect(result.tracks.map((t) => t.name)).toEqual(['Track A', 'Track B'])
+        expect(result.declaredItems).toBe(5)
+        expect(result.complete).toBe(false)
       }
-      expect(caught).toBeInstanceOf(ExtractionIncompleteError)
-      expect(caught).not.toBeInstanceOf(ExtractionEmptyError)
-      expect(caught).not.toBeInstanceOf(NotFoundError)
     } finally {
       await iaPool.close()
     }
@@ -1041,6 +1207,168 @@ describe('extract', () => {
     }
   }, 30_000)
 
+  // The pagination path, end to end through a real browser page: harvest the
+  // page's own windowed query, repeat it at each remaining offset, and let
+  // the responses arrive through the same interceptor the scroll path filled.
+  //
+  // This is the half of the design doc's testing section that the
+  // `isWindowedQuery` and `pageOffsets` unit tests cannot cover. Those judge
+  // request bodies the test itself wrote, so they prove the predicate is
+  // self-consistent -- never that a request shaped like the web player's own
+  // satisfies it, which is the actual risk. (tests/live.smoke.test.ts is not
+  // this test either: it recovers a live album 60/60 without ever asserting
+  // that a template was harvested, so it passes just as happily if the scroll
+  // fallback did the work.)
+  //
+  // Three things have to hold at once, and only the combination is
+  // meaningful: a real-shaped POST is recognised (the page has no scrollable
+  // container, so a failed harvest cannot be rescued -- it would show up as
+  // offsets [0] and 2 tracks of 6), the offsets walk to the declared total,
+  // and the Recorded[] that results normalizes into a complete listing.
+  it("harvests the page's own pathfinder POST and pages by offset to the declared total", async () => {
+    const pCfg = loadConfig({ POOL_SIZE: '1' })
+    const pPool = await createPool(pCfg)
+    try {
+      const id = 'paginatedPlaylistId'
+      const page = await routedPage(pPool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/html', body: windowedQueryPage(id, 2) }),
+      )
+
+      const offsetsSeen: number[] = []
+      const authSeen: (string | undefined)[] = []
+      await routePathfinder(page, (vars, req) => {
+        offsetsSeen.push(vars.offset)
+        authSeen.push(req.headers()['authorization'])
+        const content = {
+          totalCount: 6,
+          pagingInfo: { offset: vars.offset, limit: vars.limit },
+          items: [
+            playlistItem(`pt${vars.offset}`, `Track ${vars.offset}`),
+            playlistItem(`pt${vars.offset + 1}`, `Track ${vars.offset + 1}`),
+          ],
+        }
+        // Only the first window is entity-bearing, per
+        // docs/captured-shapes.md: pages past the first carry no name/uri.
+        const playlistV2 =
+          vars.offset === 0
+            ? {
+                __typename: 'Playlist',
+                name: 'Paginated Playlist',
+                uri: `spotify:playlist:${id}`,
+                ownerV2: { data: { name: 'Someone' } },
+                images: { items: [] },
+                content,
+              }
+            : { __typename: 'Playlist', content }
+        return { data: { playlistV2 } }
+      })
+
+      const result = await extract('playlist', id, pPool, pCfg)
+
+      // The page asked for offset 0; everything after it is ours.
+      expect(offsetsSeen).toEqual([0, 2, 4])
+      // Repeated, not reconstructed: the credentials on every window are the
+      // ones the page itself sent, which is why no token handling of our own
+      // is needed.
+      expect([...new Set(authSeen)]).toEqual([HARVEST_TOKEN])
+
+      expect(result.type).toBe('playlist')
+      if (result.type === 'playlist') {
+        expect(result.declaredItems).toBe(6)
+        expect(result.complete).toBe(true)
+        expect(result.tracks.map((t) => t.name)).toEqual([
+          'Track 0', 'Track 1', 'Track 2', 'Track 3', 'Track 4', 'Track 5',
+        ])
+      }
+    } finally {
+      await pPool.close()
+    }
+  }, 30_000)
+
+  // Fix wave, finding 4. Three different causes produce a short listing and
+  // only one of them (a window failing mid-loop) used to leave a trace, so an
+  // operator looking at one could not tell which had happened -- and since
+  // partial listings shipped, a shortfall is handed to an opt-in caller
+  // looking exactly like a complete answer.
+  it('warns when no template could be harvested and it falls back to scrolling', async () => {
+    const wCfg = loadConfig({ POOL_SIZE: '1' })
+    const wPool = await createPool(wCfg)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const id = 'noTemplateId'
+      const page = await routedPage(wPool)
+      // A bare GET: nothing to repeat, so the scroll fallback is taken.
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: `<html><body><script>fetch('${PATHFINDER_URL}')</script></body></html>`,
+        }),
+      )
+      await page.route(PATHFINDER_URL, (route) =>
+        route.fulfill({
+          status: 200,
+          headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+          body: JSON.stringify(playlistPageResponse(id, { offset: 0, limit: 1, itemCount: 1, totalCount: 1, entity: true }).body),
+        }),
+      )
+
+      const result = await extract('playlist', id, wPool, wCfg)
+      expect(result.type).toBe('playlist')
+      expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(
+        /no windowed pathfinder query to repeat/,
+      )
+    } finally {
+      warn.mockRestore()
+      await wPool.close()
+    }
+  }, 30_000)
+
+  // The quietest of the three: with no declared total the loop fetches no
+  // windows at all, and the verdict is `complete: true` by definition ("we
+  // cannot tell, so do not claim a shortfall"), so nothing else in the
+  // response marks it.
+  it('warns when nothing declared a total, so no windows are fetched', async () => {
+    const nCfg = loadConfig({ POOL_SIZE: '1' })
+    const nPool = await createPool(nCfg)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const id = 'noTotalId'
+      const page = await routedPage(nPool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/html', body: windowedQueryPage(id, 2) }),
+      )
+      let requests = 0
+      await routePathfinder(page, (vars) => {
+        requests++
+        return {
+          data: {
+            playlistV2: {
+              __typename: 'Playlist',
+              name: 'Totalless Playlist',
+              uri: `spotify:playlist:${id}`,
+              ownerV2: { data: { name: 'Someone' } },
+              images: { items: [] },
+              // No totalCount: the window is all anyone can know about.
+              content: { pagingInfo: { offset: vars.offset, limit: vars.limit }, items: [playlistItem('pt0', 'Track 0')] },
+            },
+          },
+        }
+      })
+
+      const result = await extract('playlist', id, nPool, nCfg)
+      expect(result.type).toBe('playlist')
+      if (result.type === 'playlist') expect(result.declaredItems).toBeNull()
+      // The template was harvested; there was simply no total to walk toward.
+      expect(requests).toBe(1)
+      expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toMatch(/no declared total/)
+    } finally {
+      warn.mockRestore()
+      await nPool.close()
+    }
+  }, 30_000)
+
   it('honours cfg.produceBudgetMs as an overall ceiling, rejecting well before navigation+scroll would finish', async () => {
     const bCfg = loadConfig({ POOL_SIZE: '1', PRODUCE_BUDGET_MS: '5' })
     const bPool = await createPool(bCfg)
@@ -1066,4 +1394,47 @@ describe('extract', () => {
       await bPool.close()
     }
   }, 10_000)
+})
+
+// The number the pagination loop walks toward. It has to come from the same
+// counters the completeness verdict reads, or the loop can stop at a total the
+// verdict then calls short -- a listing marked incomplete that nothing will
+// ever complete, because pagination believed it was done.
+describe('declaredTotalFrom', () => {
+  /** The minimum `albumUnion` shape `albumTotalCount` will read a total off. */
+  function albumTotalResponse(id: string, totalCount: number): Recorded {
+    return {
+      url: PATHFINDER_URL,
+      status: 200,
+      body: {
+        data: {
+          albumUnion: { __typename: 'Album', uri: `spotify:album:${id}`, tracksV2: { totalCount } },
+        },
+      },
+    }
+  }
+
+  it('reads an album total off the same counter the completeness check uses', () => {
+    const recorded = [albumTotalResponse('albumId', 60)]
+    expect(declaredTotalFrom('album', recorded, 'albumId')).toBe(60)
+    expect(declaredTotalFrom('album', recorded, 'albumId')).toBe(albumTotalCount(recorded, 'albumId'))
+  })
+
+  it('reads a playlist total off the same counter the completeness check uses', () => {
+    const recorded = [
+      playlistPageResponse('plId', { offset: 0, limit: 25, itemCount: 25, totalCount: 50, entity: true }),
+    ]
+    expect(declaredTotalFrom('playlist', recorded, 'plId')).toBe(50)
+    expect(declaredTotalFrom('playlist', recorded, 'plId')).toBe(playlistTotalCount(recorded, 'plId'))
+  })
+
+  it('is null for a track -- one item, nothing to page through', () => {
+    const recorded = [albumTotalResponse('albumId', 60)]
+    expect(declaredTotalFrom('track', recorded, 'albumId')).toBeNull()
+  })
+
+  it('is null when nothing declared a total, so the loop asks for nothing', () => {
+    expect(declaredTotalFrom('album', [], 'albumId')).toBeNull()
+    expect(declaredTotalFrom('playlist', [], 'plId')).toBeNull()
+  })
 })

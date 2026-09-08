@@ -38,6 +38,17 @@ export const extractionEmpty = new Counter({
   registers: [registry],
 })
 
+// Listings that came back short of their declared total (Task 1/2), broken
+// down by whether the caller opted in to receive one (`?partial=allow`) or
+// got a 502 by the default policy. Lets a dashboard tell "extraction is
+// falling short" apart from "and callers are/aren't asking for what we have".
+export const partialListings = new Counter({
+  name: 'sleevenote_partial_listings_total',
+  help: 'Listings that came back short, by whether the caller accepted one.',
+  labelNames: ['type', 'served'] as const,
+  registers: [registry],
+})
+
 /**
  * Which build is answering -- otherwise the version exists only in git and no
  * running instance can be asked. `build_info` is the Prometheus convention: a

@@ -164,6 +164,21 @@ items:
 
 ## Pagination
 
+Everything below documents how `tools/capture.ts` — the fixture-recording
+probe — recovers a full listing by scrolling, because that is how the
+fixtures in `tests/fixtures/` were built and it is what grounds the JSON
+paths above. **Production extraction (`src/extract.ts`) no longer scrolls
+first.** It harvests the page's first windowed pathfinder request as a
+reusable template (URL, headers, persisted-query hash, `variables`) and
+issues successive requests directly at increasing `offset`, using
+`content.totalCount` / `tracksV2.totalCount` — the same counters this
+document already treats as the source of truth — to know when to stop.
+Scrolling is retained only as the fallback for when no template can be
+harvested; see `docs/design-notes.md` for why that fallback has to exist and
+stay live. None of this changes the shapes documented above: pagination
+governs how many `pathfinder/v2/query` responses arrive and in what order
+they're requested, not what any one of them contains.
+
 **Observed track count for `playlist-large` (`37i9dQZF1DX4o1oenSJRJd`, "All
 Out 2000s"): 150 tracks recovered.**
 **Real length, per `data.playlistV2.content.totalCount`: 150.**

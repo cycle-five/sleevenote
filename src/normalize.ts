@@ -254,6 +254,11 @@ export function normalizeAlbum(recorded: Recorded[], id: string): Album | null {
     else unresolvedItems++
   }
 
+  const declaredItems = albumTotalCount(recorded, id)
+  // Seen, not well-formed: an item validation dropped was still seen.
+  const seen = tracks.length + unresolvedItems
+  const complete = declaredItems === null || seen === declaredItems
+
   return {
     id,
     type: 'album',
@@ -263,6 +268,8 @@ export function normalizeAlbum(recorded: Recorded[], id: string): Album | null {
     url: `https://open.spotify.com/album/${id}`,
     tracks,
     unresolvedItems,
+    declaredItems,
+    complete,
   }
 }
 
@@ -429,6 +436,11 @@ export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | 
     else unresolvedItems++
   }
 
+  const declaredItems = playlistTotalCount(recorded, id)
+  // Seen, not well-formed: an item validation dropped was still seen.
+  const seen = tracks.length + unresolvedItems
+  const complete = declaredItems === null || seen === declaredItems
+
   return {
     id,
     type: 'playlist',
@@ -438,6 +450,8 @@ export function normalizePlaylist(recorded: Recorded[], id: string): Playlist | 
     url: `https://open.spotify.com/playlist/${id}`,
     tracks,
     unresolvedItems,
+    declaredItems,
+    complete,
   }
 }
 
