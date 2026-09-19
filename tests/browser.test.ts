@@ -344,19 +344,23 @@ async function waitFor(predicate: () => boolean, ms: number): Promise<boolean> {
   return predicate()
 }
 
-/** An observer that records every launch and counts failures. */
+/** An observer that records every launch and failure, with timestamps for backoff assertions. */
 function observed() {
   const launches: LaunchEvent[] = []
-  let failures = 0
+  const launchedAt: number[] = []
+  const failedAt: number[] = []
   return {
     launches,
-    failures: () => failures,
+    launchedAt,
+    failedAt,
+    failures: () => failedAt.length,
     observer: {
       launched: (e: LaunchEvent) => {
         launches.push(e)
+        launchedAt.push(Date.now())
       },
       launchFailed: () => {
-        failures++
+        failedAt.push(Date.now())
       },
     },
   }
@@ -430,6 +434,12 @@ describe('createPool: a browser crash', () => {
       expect(o.failures()).toBe(2)
       expect(fatal).not.toHaveBeenCalled()
       expect(bPool.liveContexts()).toBe(1)
+      // backoff(1) = 50ms separates failure 1 from failure 2; backoff(2) =
+      // 100ms separates failure 2 from the launch that finally succeeds.
+      // Lower bounds only -- a slow CI runner can only widen the gap, never
+      // shrink it, and asserting an upper bound would flake there.
+      expect(o.failedAt[1]! - o.failedAt[0]!).toBeGreaterThanOrEqual(45)
+      expect(o.launchedAt[1]! - o.failedAt[1]!).toBeGreaterThanOrEqual(95)
     } finally {
       await bPool.close()
     }
@@ -445,6 +455,11 @@ describe('createPool: a browser crash', () => {
       backoffBaseMs: 10,
     })
     try {
+      const held = await gPool.acquire()
+      // Queued before the kill: the only thing that fails a caller stuck
+      // behind a relaunch that gives up, rather than leaving it hanging until
+      // its own deadline.
+      const queued = gPool.acquire().catch((e: unknown) => e)
       process.kill(o.launches[0]!.pid, 'SIGKILL')
       expect(await waitFor(() => fatal.mock.calls.length > 0, 10_000)).toBe(true)
       await new Promise((r) => setTimeout(r, 300))
@@ -452,6 +467,8 @@ describe('createPool: a browser crash', () => {
       expect(fatal.mock.calls[0]![0]).toBeInstanceOf(Error)
       expect(o.failures()).toBe(3)
       expect(gPool.liveContexts()).toBe(0)
+      expect(await settlesWithin(queued, 5_000)).toBeInstanceOf(BrowserUnavailableError)
+      await held.release() // a late release from the dead browser is harmless
     } finally {
       await gPool.close()
     }
