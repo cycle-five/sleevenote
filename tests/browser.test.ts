@@ -1,5 +1,5 @@
-import { describe, it, expect, afterAll } from 'vitest'
-import { createPool, type LaunchEvent } from '../src/browser.js'
+import { describe, it, expect, afterAll, vi } from 'vitest'
+import { createPool, BrowserUnavailableError, type LaunchEvent } from '../src/browser.js'
 import { loadConfig } from '../src/config.js'
 
 const cfg = loadConfig({ POOL_SIZE: '2', CONTEXT_MAX_USES: '3' })
@@ -324,4 +324,136 @@ describe('createPool: browser generations', () => {
       await mPool.close()
     }
   }, 20_000)
+})
+
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function waitFor(predicate: () => boolean, ms: number): Promise<boolean> {
+  const until = Date.now() + ms
+  while (Date.now() < until) {
+    if (predicate()) return true
+    await new Promise((r) => setTimeout(r, 25))
+  }
+  return predicate()
+}
+
+/** An observer that records every launch and counts failures. */
+function observed() {
+  const launches: LaunchEvent[] = []
+  let failures = 0
+  return {
+    launches,
+    failures: () => failures,
+    observer: {
+      launched: (e: LaunchEvent) => {
+        launches.push(e)
+      },
+      launchFailed: () => {
+        failures++
+      },
+    },
+  }
+}
+
+// Before this, nothing listened for the browser going away: a Chromium crash
+// made every later context creation fail until someone restarted the
+// container, and nothing would, because /health's 503 has no healthcheck
+// behind it on either stack.
+describe('createPool: a browser crash', () => {
+  it('fails the lease it was holding as BrowserUnavailableError, and a new browser takes over', async () => {
+    const o = observed()
+    const cPool = await createPool(loadConfig({ POOL_SIZE: '1' }), { observer: o.observer })
+    try {
+      const lease = await cPool.acquire()
+      const pending = lease.page.evaluate(() => new Promise<never>(() => {})).catch((e: unknown) => e)
+      process.kill(o.launches[0]!.pid, 'SIGKILL')
+
+      expect(await settlesWithin(pending, 5_000)).toBeInstanceOf(Error)
+      // The pending call and the death notice race: the call can reject a few
+      // milliseconds before the pool hears of the death.
+      expect(await waitFor(() => lease.lost.aborted, 5_000)).toBe(true)
+      expect(lease.lost.reason).toBeInstanceOf(BrowserUnavailableError)
+
+      const next = await settlesWithin(cPool.acquire(), 15_000)
+      expect(next).not.toBe(TIMED_OUT)
+      if (next === TIMED_OUT) return
+      await next.page.setContent('<h1>after</h1>')
+      expect(await next.page.textContent('h1')).toBe('after')
+      expect(o.launches.map((e) => e.reason)).toEqual(['startup', 'crash'])
+      await next.release()
+      await lease.release() // a late release from the dead browser is harmless
+      expect(cPool.liveContexts()).toBe(1)
+      expect(cPool.stats().generations).toEqual({ serving: 1, draining: 0 })
+    } finally {
+      await cPool.close()
+    }
+  }, 30_000)
+
+  it('serves a caller that was already queued when the browser died', async () => {
+    const o = observed()
+    const qPool = await createPool(loadConfig({ POOL_SIZE: '1' }), { observer: o.observer })
+    try {
+      const held = await qPool.acquire()
+      const queued = qPool.acquire()
+      process.kill(o.launches[0]!.pid, 'SIGKILL')
+      const got = await settlesWithin(queued, 15_000)
+      expect(got).not.toBe(TIMED_OUT)
+      if (got === TIMED_OUT) return
+      await got.page.setContent('<h1>served</h1>')
+      expect(await got.page.textContent('h1')).toBe('served')
+      await got.release()
+      await held.release()
+    } finally {
+      await qPool.close()
+    }
+  }, 30_000)
+
+  it('backs off between failed relaunches and recovers without giving up', async () => {
+    const o = observed()
+    const fatal = vi.fn()
+    const bPool = await createPool(loadConfig({ POOL_SIZE: '1' }), {
+      observer: o.observer,
+      onFatal: fatal,
+      failNextLaunches: 2,
+      backoffBaseMs: 50,
+    })
+    try {
+      process.kill(o.launches[0]!.pid, 'SIGKILL')
+      expect(await waitFor(() => o.launches.length === 2, 15_000)).toBe(true)
+      expect(o.failures()).toBe(2)
+      expect(fatal).not.toHaveBeenCalled()
+      expect(bPool.liveContexts()).toBe(1)
+    } finally {
+      await bPool.close()
+    }
+  }, 30_000)
+
+  it('gives up after BROWSER_MAX_RELAUNCH_FAILURES failed relaunches, calling onFatal exactly once', async () => {
+    const o = observed()
+    const fatal = vi.fn()
+    const gPool = await createPool(loadConfig({ POOL_SIZE: '1', BROWSER_MAX_RELAUNCH_FAILURES: '3' }), {
+      observer: o.observer,
+      onFatal: fatal,
+      failNextLaunches: 10,
+      backoffBaseMs: 10,
+    })
+    try {
+      process.kill(o.launches[0]!.pid, 'SIGKILL')
+      expect(await waitFor(() => fatal.mock.calls.length > 0, 10_000)).toBe(true)
+      await new Promise((r) => setTimeout(r, 300))
+      expect(fatal).toHaveBeenCalledTimes(1)
+      expect(fatal.mock.calls[0]![0]).toBeInstanceOf(Error)
+      expect(o.failures()).toBe(3)
+      expect(gPool.liveContexts()).toBe(0)
+    } finally {
+      await gPool.close()
+    }
+  }, 30_000)
 })

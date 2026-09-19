@@ -1,6 +1,6 @@
 import type { BrowserContext, Page } from 'playwright'
 import type { Config } from './config.js'
-import { launchBrowserProcess, type BrowserProcess } from './browser-process.js'
+import { launchBrowserProcess, type BrowserProcess, type DeathCause } from './browser-process.js'
 
 export type Lease = {
   page: Page
@@ -92,6 +92,9 @@ export class PoolClosedError extends Error {
   }
 }
 
+/** No browser could serve: the lease's browser died, or none was serving while the caller waited. */
+export class BrowserUnavailableError extends Error {}
+
 // Test-only fault injection, not part of the Pool contract: `createPool(cfg)`
 // alone is the real signature. The hooks ride in the same options object as
 // the real ones, so every existing call site keeps working.
@@ -100,9 +103,21 @@ type TestFaultHooks = {
   hangNextContextCloses?: number
   /** Replaces the `/proc` reading of a generation's memory. */
   memoryOf?: (pid: number) => number | null
+  /** Launches after startup that fail before starting Chromium. */
+  failNextLaunches?: number
+  /** Replaces the 1s base of the relaunch and recycle backoff. */
+  backoffBaseMs?: number
 }
 
-export type PoolOptions = { observer?: PoolObserver } & TestFaultHooks
+export type PoolOptions = {
+  observer?: PoolObserver
+  /**
+   * Called once when relaunching has failed `browserMaxRelaunchFailures`
+   * times in a row. index.ts exits the process, so the container restart
+   * policy gives it a clean start; the pool never exits by itself.
+   */
+  onFatal?: (err: Error) => void
+} & TestFaultHooks
 
 /**
  * Close `context`, but stop waiting after `ms`. A context whose renderer has
@@ -120,6 +135,22 @@ async function closeWithin(close: () => Promise<void>, ms: number): Promise<void
   if (outcome === 'gave up') {
     console.warn(`[pool] a context did not close within ${ms}ms -- abandoning it and creating a replacement`)
   }
+}
+
+const BACKOFF_BASE_MS = 1_000
+const BACKOFF_CAP_MS = 30_000
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    // Unref'd so a pending backoff cannot hold the process open at shutdown.
+    setTimeout(resolve, ms).unref()
+  })
+}
+
+/** First line only: Playwright folds a stack into `message`. */
+function firstLine(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err)
+  return message.split('\n')[0] ?? message
 }
 
 /**
@@ -140,6 +171,16 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
   const waiters: Waiter[] = []
   // Set once by close(); read by every inner function below via closure.
   let closed = false
+  let launchFailuresRemaining = 0
+  let relaunching = false
+  let relaunchFailures = 0
+  const onFatal =
+    opts.onFatal ?? ((err: Error) => console.error(`[pool] giving up on the browser: ${firstLine(err)}`))
+  const backoffBaseMs = opts.backoffBaseMs ?? BACKOFF_BASE_MS
+
+  function backoff(attempt: number): number {
+    return Math.min(backoffBaseMs * 2 ** (attempt - 1), BACKOFF_CAP_MS)
+  }
 
   async function createContext(gen: Generation): Promise<ContextRecord> {
     if (failuresRemaining > 0) {
@@ -165,6 +206,10 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
   // Launched and filled, but not yet serving: nothing hands out from a
   // generation until promote() makes it the serving one.
   async function launchGeneration(reason: LaunchReason): Promise<Generation> {
+    if (launchFailuresRemaining > 0) {
+      launchFailuresRemaining--
+      throw new Error('injected launch failure (test)')
+    }
     const process = await launchBrowserProcess()
     const gen: Generation = {
       id: nextGenerationId++,
@@ -176,6 +221,7 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
       free: [],
       memoryBytes: null,
     }
+    process.onDeath((cause) => onDeath(gen, cause))
     try {
       for (let i = 0; i < cfg.poolSize; i++) gen.free.push(await createContext(gen))
       // A browser that died during the fill must not be promoted: nothing
@@ -322,9 +368,73 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
     }
   }
 
+  // A browser that dies is never trusted again: every lease on it is lost, and
+  // if it was serving, a relaunch starts at once.
+  function onDeath(gen: Generation, cause: DeathCause): void {
+    // A 'starting' generation is launchGeneration's to handle: its fill fails,
+    // or its `dead` check catches it, and the launch is reported as failed.
+    if (closed || gen.state === 'closed' || gen.state === 'starting') return
+    const wasServing = gen.state === 'serving'
+    gen.state = 'closed'
+    draining.delete(gen)
+    console.warn(
+      `[pool] browser generation ${gen.id} (pid ${gen.process.pid}) died (${cause}) while ${wasServing ? 'serving' : 'draining'}`,
+    )
+    const reason = new BrowserUnavailableError(`the browser died (${cause}) while this lookup was using it`)
+    for (const record of gen.records) record.lost?.abort(reason)
+    gen.records.clear()
+    gen.free = []
+    // A dropped connection can leave the process itself running.
+    void gen.process.close(cfg.browserCloseTimeoutMs)
+    if (wasServing) {
+      serving = null
+      void relaunch()
+    }
+  }
+
+  // Keeps trying until something serves, backing off between failures. A
+  // queued caller is served by whichever launch succeeds. Past the limit, the
+  // pool stops, rejects everyone waiting, and hands the decision to onFatal.
+  async function relaunch(): Promise<void> {
+    if (relaunching) return
+    relaunching = true
+    try {
+      while (!closed && serving === null) {
+        try {
+          const gen = await launchGeneration('crash')
+          if (closed) {
+            await gen.process.close(cfg.browserCloseTimeoutMs)
+            return
+          }
+          relaunchFailures = 0
+          promote(gen)
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err))
+          relaunchFailures++
+          opts.observer?.launchFailed()
+          console.warn(
+            `[pool] relaunch ${relaunchFailures} of ${cfg.browserMaxRelaunchFailures} failed: ${firstLine(error)}`,
+          )
+          if (relaunchFailures >= cfg.browserMaxRelaunchFailures) {
+            console.error(`[pool] ${relaunchFailures} relaunches in a row failed -- giving up on the browser`)
+            while (waiters.length > 0) {
+              waiters.shift()!.reject(new BrowserUnavailableError('no browser could be launched'))
+            }
+            onFatal(error)
+            return
+          }
+          await sleep(backoff(relaunchFailures))
+        }
+      }
+    } finally {
+      relaunching = false
+    }
+  }
+
   promote(await launchGeneration('startup'))
   failuresRemaining = opts.failNextContextCreations ?? 0
   closeHangsRemaining = opts.hangNextContextCloses ?? 0
+  launchFailuresRemaining = opts.failNextLaunches ?? 0
 
   return {
     async acquire(deadline?: AbortSignal): Promise<Lease> {
