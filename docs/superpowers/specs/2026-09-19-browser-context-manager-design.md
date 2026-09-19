@@ -165,7 +165,14 @@ lease's browser dies, with a `BrowserUnavailableError` as the reason.
 `runExtraction` checks it in one place: on any error, `if (lease.lost.aborted)
 throw lease.lost.reason`. A crash is then reported as what it was, not as the
 `Browser closed` or `Target closed` Playwright error the extraction happened
-to be waiting on. A deadline revocation (0.4.1) does not abort `lost`;
+to be waiting on.
+
+The failed call and the death notice race: the call can reject a few
+milliseconds before the pool sees the exit or the disconnect. So a failure
+that is not one of our own `ExtractionError` verdicts waits up to 1 s for
+`lost` before it is judged. Our verdicts never wait. A goto timeout pays at
+most one extra second on top of its 45 s, and a revoked lease's caller was
+answered at the deadline, so nobody waits on that. A deadline revocation (0.4.1) does not abort `lost`;
 `withBudget` already answers that caller with `ExtractionTimeoutError`.
 
 ## 3. Acquiring: the wait cap (D3)
