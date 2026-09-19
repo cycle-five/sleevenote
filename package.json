@@ -1,6 +1,6 @@
 {
   "name": "sleevenote",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Resolve a music-entity URL to normalized metadata. No provider API key.",
   "directories": {
     "doc": "docs"
