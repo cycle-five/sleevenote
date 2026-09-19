@@ -71,6 +71,44 @@ export const poolWaiting = new Gauge({
   registers: [registry],
 })
 
+// Generations, age and memory are read from the pool at scrape time. Age and
+// memory carry a constant `state="serving"` label for one reason: reset() on a
+// labelled gauge empties it, so the sample is ABSENT while no browser serves.
+// An unlabelled gauge resets to 0, which would read as a brand-new browser.
+export const browserGenerations = new Gauge({
+  name: 'sleevenote_browser_generations',
+  help: 'Browser generations by state (serving/draining), read from the pool at scrape time.',
+  labelNames: ['state'] as const,
+  registers: [registry],
+})
+
+export const browserAge = new Gauge({
+  name: 'sleevenote_browser_age_seconds',
+  help: 'Age of the serving browser, read at scrape time. Absent while none is serving.',
+  labelNames: ['state'] as const,
+  registers: [registry],
+})
+
+export const browserMemory = new Gauge({
+  name: 'sleevenote_browser_memory_bytes',
+  help: "PSS of the serving browser's process tree at the last sample. Absent while unmeasurable.",
+  labelNames: ['state'] as const,
+  registers: [registry],
+})
+
+export const browserLaunches = new Counter({
+  name: 'sleevenote_browser_launches_total',
+  help: 'Browser generations launched, by reason (startup/recycle_age/recycle_leases/recycle_memory/crash).',
+  labelNames: ['reason'] as const,
+  registers: [registry],
+})
+
+export const browserLaunchFailures = new Counter({
+  name: 'sleevenote_browser_launch_failures_total',
+  help: 'Browser launches after startup that failed, relaunch or recycle.',
+  registers: [registry],
+})
+
 export const buildInfo = new Gauge({
   name: 'sleevenote_build_info',
   help: 'Build metadata for the running instance. Always 1; read the labels.',

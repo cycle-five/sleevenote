@@ -184,6 +184,29 @@ function sleep(ms: number): Promise<void> {
   })
 }
 
+// How long a failed Playwright call waits to learn whether the browser died
+// under it. The call and the pool's death notice race -- the call can reject
+// a few milliseconds before the exit or disconnect is seen (measured: exit
+// at +5ms, disconnect at +14ms after a SIGKILL).
+const LOST_GRACE_MS = 1_000
+
+/** Resolves when `signal` aborts, or after `ms`, whichever is first. */
+function abortedWithin(signal: AbortSignal, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve()
+    const timer = setTimeout(resolve, ms)
+    timer.unref()
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        resolve()
+      },
+      { once: true },
+    )
+  })
+}
+
 /**
  * Wait for the body reads provoked so far, but not past `ms`. Resolves `true`
  * when every one finished, `false` when it gave up.
@@ -544,6 +567,14 @@ async function runExtraction(
     // ExtractionEmptyError above keeps its throw deliberately -- zero tracks
     // is not a partial listing, it is extraction that stopped matching.
     return result
+  } catch (err) {
+    // A crash is reported as what it was, not as whichever Playwright call
+    // happened to be pending when the browser went. Our own verdicts
+    // (ExtractionError) never wait; anything else might be the browser dying,
+    // so it waits briefly for the pool to say so.
+    if (!(err instanceof ExtractionError) && !lease.lost.aborted) await abortedWithin(lease.lost, LOST_GRACE_MS)
+    if (lease.lost.aborted) throw lease.lost.reason
+    throw err
   } finally {
     // Every path out -- including a throw above -- must release. The
     // deadline covers the path that never gets out: by then the pool has

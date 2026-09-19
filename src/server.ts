@@ -6,7 +6,7 @@ import Fastify, {
   type FastifyRequest,
 } from 'fastify'
 import { StoreError, type CacheStore } from './store.js'
-import type { Pool } from './browser.js'
+import { PoolOverloadedError, BrowserUnavailableError, type Pool } from './browser.js'
 import type { Config } from './config.js'
 import type { Track, Album, Playlist } from './types.js'
 import { cacheKey, withCache, type FailureCodec } from './cache.js'
@@ -27,6 +27,9 @@ import {
   partialListings,
   poolContexts,
   poolWaiting,
+  browserGenerations,
+  browserAge,
+  browserMemory,
   registry,
 } from './metrics.js'
 
@@ -68,6 +71,8 @@ type RelayedFailure =
   | { kind: 'extraction_incomplete'; message: string }
   | { kind: 'timeout'; message: string }
   | { kind: 'store'; message: string }
+  | { kind: 'overloaded'; message: string }
+  | { kind: 'browser_unavailable'; message: string }
   | { kind: 'other'; message: string }
 
 function classifyFailure(err: unknown): RelayedFailure {
@@ -78,6 +83,8 @@ function classifyFailure(err: unknown): RelayedFailure {
   if (err instanceof ExtractionIncompleteError) return { kind: 'extraction_incomplete', message }
   if (err instanceof ExtractionTimeoutError) return { kind: 'timeout', message }
   if (err instanceof StoreError) return { kind: 'store', message }
+  if (err instanceof PoolOverloadedError) return { kind: 'overloaded', message }
+  if (err instanceof BrowserUnavailableError) return { kind: 'browser_unavailable', message }
   return { kind: 'other', message }
 }
 
@@ -95,6 +102,10 @@ function reviveFailure(f: RelayedFailure): unknown {
       return new ExtractionTimeoutError(f.message)
     case 'store':
       return new StoreError(f.message)
+    case 'overloaded':
+      return new PoolOverloadedError(f.message)
+    case 'browser_unavailable':
+      return new BrowserUnavailableError(f.message)
     case 'other':
       return new Error(f.message)
   }
@@ -150,6 +161,14 @@ function recordFailureMetrics(err: unknown): void {
   }
   if (err instanceof ExtractionTimeoutError) {
     scrapeFailures.inc({ reason: 'timeout' })
+    return
+  }
+  if (err instanceof PoolOverloadedError) {
+    scrapeFailures.inc({ reason: 'overloaded' })
+    return
+  }
+  if (err instanceof BrowserUnavailableError) {
+    scrapeFailures.inc({ reason: 'browser_unavailable' })
     return
   }
   scrapeFailures.inc({ reason: 'unknown' })
@@ -368,6 +387,19 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
         reply.code(504)
         return { error: 'timeout', id, message: err.message }
       }
+      if (err instanceof PoolOverloadedError) {
+        // Transient and cheap to retry: nothing was attempted.
+        reply.code(503)
+        reply.header('Retry-After', '5')
+        return { error: 'overloaded', id, message: err.message }
+      }
+      if (err instanceof BrowserUnavailableError) {
+        // Transient: the browser is being relaunched. Says nothing about
+        // Spotify's page, so it must not read as an extraction failure.
+        reply.code(503)
+        reply.header('Retry-After', '5')
+        return { error: 'browser_unavailable', id, message: err.message }
+      }
       reply.code(502)
       return { error: 'internal', id, message: err instanceof Error ? err.message : String(err) }
     }
@@ -394,10 +426,16 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   })
 
   fastify.get('/metrics', async (_req, reply) => {
-    const { free, leased, waiting } = pool.stats()
-    poolContexts.set({ state: 'free' }, free)
-    poolContexts.set({ state: 'leased' }, leased)
-    poolWaiting.set(waiting)
+    const stats = pool.stats()
+    poolContexts.set({ state: 'free' }, stats.free)
+    poolContexts.set({ state: 'leased' }, stats.leased)
+    poolWaiting.set(stats.waiting)
+    browserGenerations.set({ state: 'serving' }, stats.generations.serving)
+    browserGenerations.set({ state: 'draining' }, stats.generations.draining)
+    browserAge.reset()
+    if (stats.browserAgeSeconds !== null) browserAge.set({ state: 'serving' }, stats.browserAgeSeconds)
+    browserMemory.reset()
+    if (stats.browserMemoryBytes !== null) browserMemory.set({ state: 'serving' }, stats.browserMemoryBytes)
     reply.header('Content-Type', registry.contentType)
     return registry.metrics()
   })

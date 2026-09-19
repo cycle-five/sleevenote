@@ -11,6 +11,7 @@ import {
 } from '../src/extract.js'
 import { extractionEmpty, scrapeFailures } from '../src/metrics.js'
 import { StoreError } from '../src/store.js'
+import { PoolOverloadedError, BrowserUnavailableError } from '../src/browser.js'
 
 type CounterLike = {
   get: () => Promise<{ values: { value: number; labels: Partial<Record<string, string | number>> }[] }>
@@ -40,7 +41,14 @@ const cfg = loadConfig({ LOG_LEVEL: 'silent' })
 const fakePool = {
   acquire: async () => { throw new Error('unused') },
   liveContexts: () => 1,
-  stats: () => ({ free: 0, leased: 2, waiting: 3 }),
+  stats: () => ({
+    free: 0,
+    leased: 2,
+    waiting: 3,
+    generations: { serving: 1, draining: 1 },
+    browserAgeSeconds: 42,
+    browserMemoryBytes: 1234,
+  }),
   close: async () => {},
 }
 
@@ -200,6 +208,33 @@ describe('GET /metrics', () => {
     expect(res.body).toMatch(/sleevenote_pool_contexts\{state="free"\} 0/)
     expect(res.body).toMatch(/sleevenote_pool_contexts\{state="leased"\} 2/)
     expect(res.body).toMatch(/sleevenote_pool_waiting 3/)
+  })
+
+  it('exposes the browser generations, age and memory', async () => {
+    const res = await server(async () => TRACK).inject({ method: 'GET', url: '/metrics' })
+    expect(res.body).toMatch(/sleevenote_browser_generations\{state="serving"\} 1/)
+    expect(res.body).toMatch(/sleevenote_browser_generations\{state="draining"\} 1/)
+    expect(res.body).toMatch(/sleevenote_browser_age_seconds\{state="serving"\} 42/)
+    expect(res.body).toMatch(/sleevenote_browser_memory_bytes\{state="serving"\} 1234/)
+    expect(res.body).toContain('sleevenote_browser_launches_total')
+    expect(res.body).toContain('sleevenote_browser_launch_failures_total')
+  })
+
+  // Absent, not zero: a zero would read as a brand-new browser, or one using
+  // no memory at all.
+  it('omits the age and memory samples while no browser is serving', async () => {
+    const idle = {
+      ...fakePool,
+      stats: () => ({
+        free: 0, leased: 0, waiting: 0,
+        generations: { serving: 0, draining: 0 },
+        browserAgeSeconds: null, browserMemoryBytes: null,
+      }),
+    }
+    const app = buildServer({ cfg, store: new MemoryStore(), pool: idle as any, extract: async () => TRACK as any })
+    const res = await app.inject({ method: 'GET', url: '/metrics' })
+    expect(res.body).not.toMatch(/sleevenote_browser_age_seconds\{/)
+    expect(res.body).not.toMatch(/sleevenote_browser_memory_bytes\{/)
   })
 })
 
@@ -593,6 +628,30 @@ describe('concurrent callers on a failing entity', () => {
       expect(res.json().error).toBe('timeout')
     }
   })
+
+  it('preserves overloaded and browser_unavailable for waiters too', async () => {
+    const cases = [
+      { id: 'shedalbum', code: 'overloaded', make: () => new PoolOverloadedError('busy') },
+      { id: 'lostalbum', code: 'browser_unavailable', make: () => new BrowserUnavailableError('gone') },
+    ]
+    for (const { id, code, make } of cases) {
+      let calls = 0
+      const app = fastServer(async () => {
+        calls++
+        await new Promise((r) => setTimeout(r, 50))
+        throw make()
+      })
+      const [a, b] = await Promise.all([
+        app.inject({ method: 'GET', url: `/v1/album/${id}` }),
+        app.inject({ method: 'GET', url: `/v1/album/${id}` }),
+      ])
+      expect(calls).toBe(1)
+      for (const res of [a, b]) {
+        expect(res.statusCode).toBe(503)
+        expect(res.json().error).toBe(code)
+      }
+    }
+  })
 })
 
 describe('a silent extraction is our failure, not the entity being absent', () => {
@@ -755,5 +814,44 @@ describe('fan-out', () => {
     expect(res.statusCode).toBe(200)
     // The rejection, if there is one, happens after the response resolves.
     await settle()
+  })
+})
+
+describe('shedding load and losing the browser', () => {
+  it('maps PoolOverloadedError to 503 overloaded, with Retry-After', async () => {
+    const res = await server(async () => { throw new PoolOverloadedError('busy') }).inject({ method: 'GET', url: '/v1/track/abc' })
+    expect(res.statusCode).toBe(503)
+    expect(res.headers['retry-after']).toBe('5')
+    expect(res.json()).toMatchObject({ error: 'overloaded', id: 'abc' })
+  })
+
+  it('maps BrowserUnavailableError to 503 browser_unavailable, with Retry-After', async () => {
+    const res = await server(async () => { throw new BrowserUnavailableError('gone') }).inject({ method: 'GET', url: '/v1/track/abc' })
+    expect(res.statusCode).toBe(503)
+    expect(res.headers['retry-after']).toBe('5')
+    expect(res.json()).toMatchObject({ error: 'browser_unavailable', id: 'abc' })
+  })
+
+  it('counts each as its own failure reason', async () => {
+    const before = await counterValue(scrapeFailures, { reason: 'overloaded' })
+    await server(async () => { throw new PoolOverloadedError('busy') }).inject({ method: 'GET', url: '/v1/track/abc' })
+    expect(await counterValue(scrapeFailures, { reason: 'overloaded' })).toBe(before + 1)
+    const beforeU = await counterValue(scrapeFailures, { reason: 'browser_unavailable' })
+    await server(async () => { throw new BrowserUnavailableError('gone') }).inject({ method: 'GET', url: '/v1/track/abc' })
+    expect(await counterValue(scrapeFailures, { reason: 'browser_unavailable' })).toBe(beforeU + 1)
+  })
+
+  it('serves stale rather than 503 when a shed key has a stale entry', async () => {
+    const store = new MemoryStore()
+    let shed = false
+    const app = server(async () => { if (shed) throw new PoolOverloadedError('busy'); return TRACK }, store)
+    await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    shed = true
+    const raw = JSON.parse((await store.get('v1:track:abc'))!)
+    raw.storedAt = 0
+    await store.set('v1:track:abc', JSON.stringify(raw), 9999)
+    const res = await app.inject({ method: 'GET', url: '/v1/track/abc' })
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['x-cache']).toBe('stale')
   })
 })

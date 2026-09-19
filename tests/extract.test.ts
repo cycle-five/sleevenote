@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { Page, Request } from 'playwright'
-import { createPool } from '../src/browser.js'
+import { createPool, BrowserUnavailableError, type LaunchEvent } from '../src/browser.js'
 import { loadConfig } from '../src/config.js'
 import {
   recordResponses,
@@ -1575,6 +1575,25 @@ describe('extract: a stuck extraction', () => {
       }
     } finally {
       await wPool.close()
+    }
+  }, 30_000)
+
+  it('reports a browser crash mid-extraction as BrowserUnavailableError, not as the Playwright error it interrupted', async () => {
+    const launches: LaunchEvent[] = []
+    const cCfg = loadConfig({ POOL_SIZE: '1' })
+    const cPool = await createPool(cCfg, {
+      observer: { launched: (e) => { launches.push(e) }, launchFailed: () => {} },
+    })
+    try {
+      const page = await routedPage(cPool)
+      // The document never arrives, so the extraction sits in goto.
+      await page.route('https://open.spotify.com/**', () => {})
+      const pending = extract('track', 'crashId', cPool, cCfg).catch((e: unknown) => e)
+      await new Promise((r) => setTimeout(r, 500))
+      process.kill(launches[0]!.pid, 'SIGKILL')
+      expect(await settlesWithin(pending, 10_000)).toBeInstanceOf(BrowserUnavailableError)
+    } finally {
+      await cPool.close()
     }
   }, 30_000)
 })

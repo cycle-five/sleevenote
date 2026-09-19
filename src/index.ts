@@ -1,9 +1,9 @@
 import { loadConfig } from './config.js'
 import { RedisStore } from './store.js'
-import { createPool } from './browser.js'
+import { createPool, type PoolOptions } from './browser.js'
 import { extract } from './extract.js'
 import { buildServer } from './server.js'
-import { buildInfo } from './metrics.js'
+import { buildInfo, browserLaunches, browserLaunchFailures } from './metrics.js'
 import { readVersion } from './version.js'
 
 export type ShutdownDeps = {
@@ -26,13 +26,32 @@ export async function shutdownSequence(deps: ShutdownDeps): Promise<void> {
   await deps.store.close()
 }
 
+/**
+ * How the pool reports to the process. It counts launches, and when the pool
+ * gives up on the browser it exits non-zero, so the container restart policy
+ * gives the service a clean start: a process answering 503 forever is an
+ * outage nobody is told about. `exit` is injected so this is testable.
+ */
+export function poolOptionsFor(exit: (code: number) => void): PoolOptions {
+  return {
+    observer: {
+      launched: ({ reason }) => browserLaunches.inc({ reason }),
+      launchFailed: () => browserLaunchFailures.inc(),
+    },
+    onFatal: (err) => {
+      console.error(`[sleevenote] the browser cannot be relaunched -- exiting so the container restarts: ${err.message}`)
+      exit(1)
+    },
+  }
+}
+
 async function main(): Promise<void> {
   const version = readVersion()
   buildInfo.set({ version }, 1)
 
   const cfg = loadConfig(process.env)
   const store = new RedisStore(cfg.redisUrl)
-  const pool = await createPool(cfg)
+  const pool = await createPool(cfg, poolOptionsFor((code) => process.exit(code)))
   const app = buildServer({ cfg, store, pool, extract })
 
   await app.listen({ port: cfg.port, host: '0.0.0.0' })
