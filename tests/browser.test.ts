@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll, vi } from 'vitest'
-import { createPool, BrowserUnavailableError, type LaunchEvent } from '../src/browser.js'
+import { createPool, BrowserUnavailableError, PoolOverloadedError, type LaunchEvent } from '../src/browser.js'
 import { loadConfig } from '../src/config.js'
 
 const cfg = loadConfig({ POOL_SIZE: '2', CONTEXT_MAX_USES: '3' })
@@ -572,4 +572,40 @@ describe('createPool: recycling the browser', () => {
       await fPool.close()
     }
   }, 60_000)
+})
+
+// Before this, an excess caller waited up to the whole budget just to queue,
+// then got the same 504 as a genuinely stuck extraction.
+describe('createPool: the wait cap', () => {
+  it('turns a caller away with PoolOverloadedError once it has waited POOL_WAIT_CAP_MS', async () => {
+    const wPool = await createPool(loadConfig({ POOL_SIZE: '1', POOL_WAIT_CAP_MS: '300' }))
+    try {
+      const held = await wPool.acquire()
+      const started = Date.now()
+      const err = await settlesWithin(wPool.acquire().catch((e: unknown) => e), 5_000)
+      expect(err).toBeInstanceOf(PoolOverloadedError)
+      expect(Date.now() - started).toBeLessThan(3_000)
+      expect(wPool.stats().waiting).toBe(0)
+      await held.release()
+    } finally {
+      await wPool.close()
+    }
+  }, 20_000)
+
+  it('answers BrowserUnavailableError when no browser was serving while the caller waited', async () => {
+    const o = observed()
+    const uPool = await createPool(loadConfig({ POOL_SIZE: '1', POOL_WAIT_CAP_MS: '300' }), {
+      observer: o.observer,
+      failNextLaunches: 10,
+      backoffBaseMs: 60_000, // the relaunch stays pending for the whole test
+    })
+    try {
+      process.kill(o.launches[0]!.pid, 'SIGKILL')
+      expect(await waitFor(() => uPool.liveContexts() === 0, 5_000)).toBe(true)
+      const err = await settlesWithin(uPool.acquire().catch((e: unknown) => e), 5_000)
+      expect(err).toBeInstanceOf(BrowserUnavailableError)
+    } finally {
+      await uPool.close()
+    }
+  }, 20_000)
 })

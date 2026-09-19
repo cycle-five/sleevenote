@@ -95,6 +95,9 @@ export class PoolClosedError extends Error {
 /** No browser could serve: the lease's browser died, or none was serving while the caller waited. */
 export class BrowserUnavailableError extends Error {}
 
+/** A caller waited POOL_WAIT_CAP_MS for a context while a browser was serving. */
+export class PoolOverloadedError extends Error {}
+
 // Test-only fault injection, not part of the Pool contract: `createPool(cfg)`
 // alone is the real signature. The hooks ride in the same options object as
 // the real ones, so every existing call site keeps working.
@@ -547,25 +550,42 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
       const ready = serving?.free.shift()
       if (ready !== undefined) return makeLease(ready, deadline)
       const queued = await new Promise<ContextRecord>((resolve, reject) => {
-        // A caller whose deadline passes leaves the queue. Left in it, it
-        // would be handed the next free context after it had stopped
-        // listening, ahead of a caller that is still waiting.
-        const leave = (): void => {
+        let capTimer: NodeJS.Timeout | undefined
+        const settle = (): void => {
+          deadline?.removeEventListener('abort', onDeadline)
+          clearTimeout(capTimer)
+        }
+        // A caller leaves the queue when its deadline passes or its wait cap
+        // does. Left in it, it would be handed the next free context after it
+        // had stopped listening, ahead of a caller that is still waiting.
+        const leave = (err: unknown): void => {
           const i = waiters.indexOf(waiter)
           if (i !== -1) waiters.splice(i, 1)
-          reject(deadline?.reason)
+          settle()
+          reject(err)
         }
+        const onDeadline = (): void => leave(deadline?.reason)
         const waiter: Waiter = {
           resolve: (r) => {
-            deadline?.removeEventListener('abort', leave)
+            settle()
             resolve(r)
           },
           reject: (err) => {
-            deadline?.removeEventListener('abort', leave)
+            settle()
             reject(err)
           },
         }
-        deadline?.addEventListener('abort', leave, { once: true })
+        // Which answer depends on why nothing came free: every context busy,
+        // or no browser at all while a relaunch is pending.
+        capTimer = setTimeout(() => {
+          leave(
+            serving !== null
+              ? new PoolOverloadedError(`no browser context came free within ${cfg.poolWaitCapMs}ms`)
+              : new BrowserUnavailableError(`no browser was serving for the ${cfg.poolWaitCapMs}ms this lookup waited`),
+          )
+        }, cfg.poolWaitCapMs)
+        capTimer.unref()
+        deadline?.addEventListener('abort', onDeadline, { once: true })
         waiters.push(waiter)
       })
       if (deadline?.aborted) {
