@@ -424,7 +424,19 @@ event 5 ms later, and the browser's `disconnected` event 14 ms later — both
 well inside the 1 s a failing extraction is given to find out whether its
 lease was lost (`LOST_GRACE_MS`), before it is judged on its own error
 instead. Full numbers and the rest of the design:
-[the browser context manager spec](docs/superpowers/specs/2026-09-19-browser-context-manager-design.md).
+[the browser context manager spec](superpowers/specs/2026-09-19-browser-context-manager-design.md).
+
+**A launch is bounded end to end.** `launchServer()` and `connect()` have
+`LAUNCH_TIMEOUT_MS`; the fill that follows (`newContext`, `newPage`, `route`)
+has `FILL_TIMEOUT_MS`, 30 s, against a real fill of well under a second
+(`fill()`). A Chromium that is alive but not answering used to hold the fill
+forever, which wedged every launch path at a permanent 503 without an exit.
+Now the launch fails at the bound and the browser is SIGKILLed.
+
+**A shutdown is not a crash.** Playwright's own `SIGTERM`, `SIGINT` and
+`SIGHUP` handlers are turned off. Left on, they closed Chromium before
+`index.ts`'s shutdown ran, so every `docker stop` counted a crash and
+relaunched mid-drain.
 
 **Recycling is blue/green, not stop-the-world.** A recycle launches the
 replacement generation and fills it to `POOL_SIZE` before the serving pointer
@@ -443,12 +455,16 @@ process missing `smaps_rollup` — a pre-4.14 kernel, or a permissions quirk —
 falls back to `VmRSS`.
 
 **A crash triggers relaunch with exponential backoff:** 1 s, 2 s, 4 s, …
-capped at 30 s (`backoff()`). After `BROWSER_MAX_RELAUNCH_FAILURES` (default
-5) failures in a row, the manager calls `onFatal` once and stops trying
-(`relaunch()`); `index.ts` exits the process so the container restart policy
-gives it a clean start (`poolOptionsFor()`). Exiting beats answering 503
-forever, because neither stack has a healthcheck on sleevenote — a process
-that stays up but broken is an outage nobody is told about.
+capped at 30 s (`backoff()`). A failure is a launch that fails, or a browser
+that dies before it has served for `STABLE_AFTER_MS` (60 s): one that fills
+and then keeps dying soon after is a crash loop, which a container restart
+clears and an instant relaunch never would. A browser that dies after serving
+that long relaunches at once. After `BROWSER_MAX_RELAUNCH_FAILURES` (default 5)
+failures in a row, the manager calls `onFatal` once and stops trying
+(`relaunch()`, `onDeath()`); `index.ts` exits the process so the container
+restart policy gives it a clean start (`poolOptionsFor()`). Exiting beats
+answering 503 forever, because neither stack has a healthcheck on sleevenote
+— a process that stays up but broken is an outage nobody is told about.
 
 **Overload answers 503 under two distinct codes.** `overloaded` means every
 context stayed busy for `POOL_WAIT_CAP_MS`; `browser_unavailable` means the

@@ -4,7 +4,9 @@
 **Status:** approved in outline (approach A, and the component breakdown in
 section 1). Sections 2 to 6 were settled autonomously at the owner's request
 ("run autonomously until we're at the live testing / ready PR"). Each call
-made that way is marked **Ruling**, with what it costs if wrong.
+made that way is marked **Ruling**, with what it costs if wrong. **Amended**
+after the final review: section 2's launch bound, early deaths as failures,
+and shutdown; and D6's crash mid-pagination.
 **Builds on:** `fix/pool-lease-deadline` (0.4.1, unreleased; hotfixed onto
 TuneTitan): pool-owned lease deadlines, revocation, bounded close and
 bounded body waits. None of that changes here.
@@ -84,8 +86,11 @@ serving ──(recycle trigger)──▶ draining ──(last lease ends)──�
   pending. Every new lease comes from the serving generation.
 - **A draining generation never hands out a context.** A context released
   into it is closed, not reused. When its last lease ends, whether released
-  or revoked at its deadline, the generation closes. Draining therefore lasts
-  at most `PRODUCE_BUDGET_MS` plus `BROWSER_CLOSE_TIMEOUT_MS`.
+  or revoked at its deadline, the generation closes. The old browser is
+  therefore gone at most `PRODUCE_BUDGET_MS` + `CONTEXT_CLOSE_TIMEOUT_MS` +
+  2 × `BROWSER_CLOSE_TIMEOUT_MS` after draining starts: the last lease's
+  context close is bounded on its own, and `close(ms)` is a graceful close
+  for up to `ms`, then a SIGKILL and up to `ms` more for the exit.
 - **The queue belongs to the manager.** A caller waiting across a recycle or
   a crash is served by the next serving generation, and never sees the switch.
 - **Per-context recycling is unchanged.** A context is replaced at
@@ -96,6 +101,15 @@ serving ──(recycle trigger)──▶ draining ──(last lease ends)──�
 - **Startup is not a relaunch.** If the very first launch fails,
   `createPool()` rejects, as it does today, and `main()` exits non-zero. Backoff
   and escalation apply only once something has served.
+- **A launch is bounded end to end.** `launchServer()` and `connect()` have
+  `LAUNCH_TIMEOUT_MS`, and the fill to `POOL_SIZE` contexts (`newContext`,
+  `newPage`, `route`) has `FILL_TIMEOUT_MS`, 30 s; a real fill takes well
+  under 1 s. Past either, the launch fails and its browser is SIGKILLed. A
+  Chromium that is alive but not answering once held the fill forever: a
+  relaunch never failed, so it never escalated; a recycle never finished, so
+  `close()` never did; at startup `createPool()` never resolved.
+  **Ruling: a constant, not a knob,** as `LAUNCH_TIMEOUT_MS` is. *Costs if
+  wrong:* one more knob later.
 - **`liveContexts()` counts the serving generation only**, so `/health` goes
   503 while nothing is serving. `stats()` counts `free` and `leased` across
   every generation, so a lease still held by a draining browser shows up.
@@ -142,16 +156,40 @@ straight away.
 `BrowserProcess.onDeath` fires once, on whichever comes first: the process
 `exit` event or the browser's `disconnected` event.
 
-- **The serving generation dies:** it is marked closed, and every lease on it
-  is **lost** (below). The serving pointer is cleared, and a relaunch starts
-  at once.
+- **The serving generation dies:** it is marked closed, and the serving
+  pointer is cleared before every lease on it is **lost** (below), so a
+  caller acquiring from a `lost` listener queues for the relaunch. A
+  relaunch starts at once if the generation had served for
+  `STABLE_AFTER_MS`; otherwise its death is a failure (next bullet).
 - **A draining generation dies:** it is marked closed and its leases are
   lost. No relaunch, since something else is already serving.
-- **Relaunch backoff:** an attempt that fails waits 1 s, then 2 s, 4 s and so
-  on, capped at 30 s. After `BROWSER_MAX_RELAUNCH_FAILURES` (default 5)
-  consecutive failures, the manager calls `onFatal(err)` once and stops
-  trying. `index.ts` passes a handler that logs and calls `process.exit(1)`,
-  and `restart: unless-stopped` gives it a clean container.
+- **Relaunch backoff:** a failure waits 1 s, then 2 s, 4 s and so on, capped
+  at 30 s. A failure is a launch that fails, or a serving generation that
+  dies before it has served for `STABLE_AFTER_MS` (60 s). After
+  `BROWSER_MAX_RELAUNCH_FAILURES` (default 5) consecutive failures, the
+  manager rejects every waiter, calls `onFatal(err)` once, and stops trying.
+  `index.ts` passes a handler that logs and calls `process.exit(1)`, and
+  `restart: unless-stopped` gives it a clean container.
+- **Ruling: a browser that dies young counts as a failure.** Counting only
+  failed launches reset the count at every promote, so a browser that fills
+  and then dies soon after (an OOM, a crash on its first navigation, pid
+  pressure from zombies) was relaunched at once, forever, with no backoff
+  and no escalation, when a container restart is exactly what clears that
+  state. The count resets once the serving generation has served for
+  `STABLE_AFTER_MS`: on the tick, and at its death by its own age. Never at
+  promote. An early death is not a `launchFailed()`, since that counter means
+  launches that failed; the death shows as the next
+  `launches_total{reason="crash"}`. *Costs if wrong:* a legitimately flaky
+  host exits sooner, after five early deaths.
+- **A shutdown is not a crash.** Playwright's own `SIGTERM`, `SIGINT` and
+  `SIGHUP` handlers are off (`launchServer()`'s `handleSIG*: false`). On, they
+  closed Chromium before `index.ts`'s shutdown ran, so every `docker stop`
+  counted a crash, relaunched mid-drain, and killed in-flight lookups ahead
+  of "close HTTP first". Playwright's `exit` handler stays, so a Node that
+  exits without `close()` still kills the browser.
+- **`close()` waits for a launch in flight**, recycle or relaunch, so none of
+  its Chromium outlives it; the fill bound keeps that wait finite. A relaunch
+  that fails after `close()` is neither counted nor escalated.
 - **Ruling: escalate by exiting, not by marking unhealthy.** Neither stack
   has a healthcheck on sleevenote, and one should not be required, so a
   process that answers 503 forever is an outage nobody is told about. *Costs
@@ -162,16 +200,21 @@ straight away.
 
 Each `Lease` gains `lost: AbortSignal`. The manager aborts it when the
 lease's browser dies, with a `BrowserUnavailableError` as the reason.
-`runExtraction` checks it in one place: on any error, `if (lease.lost.aborted)
-throw lease.lost.reason`. A crash is then reported as what it was, not as the
-`Browser closed` or `Target closed` Playwright error the extraction happened
-to be waiting on.
+`runExtraction` checks it, `if (lease.lost.aborted) throw lease.lost.reason`,
+in three places: on any error; after the capture, before it is judged or
+normalized; and before the successful return. A crash is then reported as
+what it was, not as the `Browser closed` or `Target closed` Playwright error
+the extraction happened to be waiting on, and not as the short listing a
+crash mid-pagination leaves behind: `recordResponses` swallows a failed
+window, or a failed body read, and reports it only as `pageCallFailed` on
+the capture. A short listing is served, and cached for up to 30 days, to a
+caller that opts into partial listings.
 
 The failed call and the death notice race: the call can reject a few
 milliseconds before the pool sees the exit or the disconnect. So a failure
-that is not one of our own `ExtractionError` verdicts waits up to 1 s for
-`lost` before it is judged. Our verdicts never wait. A goto timeout pays at
-most one extra second on top of its 45 s, and a revoked lease's caller was
+that is not one of our own `ExtractionError` verdicts, or a capture with
+`pageCallFailed` set, waits up to 1 s for `lost` before it is judged. Our
+verdicts never wait. A goto timeout pays at most one extra second on top of its 45 s, and a revoked lease's caller was
 answered at the deadline, so nobody waits on that. A deadline revocation (0.4.1) does not abort `lost`;
 `withBudget` already answers that caller with `ExtractionTimeoutError`.
 
@@ -261,12 +304,15 @@ New knobs, all defaulted, all in the README table:
 | `BROWSER_MAX_RELAUNCH_FAILURES` | `5` |
 | `POOL_WAIT_CAP_MS` | `min(20000, PRODUCE_BUDGET_MS / 2)`; an explicit value must be below `PRODUCE_BUDGET_MS` |
 
-The backoff base (1 s) and cap (30 s) are constants. Tests reach them through
-the existing test-only fault hooks, which grow `failNextLaunches`,
-`backoffBaseMs`, `memoryOf` (in place of the `/proc` reading) and `now` (a
-clock, so the age trigger is tested without waiting). Like the existing
-hooks, they ride in `createPool`'s second argument next to `onFatal` and
-`observer`, so `createPool(cfg)` stays the real signature.
+The backoff base (1 s) and cap (30 s), the fill bound `FILL_TIMEOUT_MS`
+(30 s) and the stability window `STABLE_AFTER_MS` (60 s) are constants. Tests
+reach them through the existing test-only fault hooks, which grow
+`failNextLaunches`, `backoffBaseMs`, `fillTimeoutMs`, `stableAfterMs`,
+`memoryOf` (in place of the `/proc` reading), `now` (a clock, so the age
+trigger is tested without waiting) and `afterConnect` (the pid of each
+browser between connect and fill, where a test can SIGSTOP it). Like the
+existing hooks, they ride in `createPool`'s second argument next to
+`onFatal` and `observer`, so `createPool(cfg)` stays the real signature.
 
 ## Testing
 
@@ -283,7 +329,9 @@ arithmetic, as the suite already does.
   - *age:* a tiny `BROWSER_MAX_AGE_MS` and check interval produce a new
     generation. A lease on the old one keeps working until it is released,
     since that is a drain, not a revoke. The old process is then gone.
-  - *leases:* `BROWSER_MAX_LEASES=3` recycles on the fourth lease.
+  - *leases:* with `BROWSER_MAX_LEASES=3`, the recycle starts when the third
+    lease is released. Leases taken while it launches still come from the
+    old browser.
   - *memory:* the fault-hook reader reports an over-limit value, and a recycle
     follows.
   - *crash:* SIGKILL the serving pid. The in-flight lease's `lost` aborts with
@@ -293,11 +341,20 @@ arithmetic, as the suite already does.
     once.
   - *failed recycle launch:* the old generation keeps serving, and `onFatal`
     is not called.
+  - *wedged browser:* SIGSTOP a browser straight after connect. A relaunch
+    fails at the fill bound, is retried, and escalates; `close()` during a
+    wedged recycle resolves, leaving none of it alive; a wedged startup
+    rejects `createPool()`.
+  - *crash loop:* SIGKILL each browser as soon as it serves. The gaps between
+    launches grow by the backoff, and `onFatal` is called at the limit.
   - *wait cap:* `overloaded` when saturated, `browser_unavailable` when
     nothing is serving.
   - All of 0.4.1's pool tests keep passing unchanged.
+- **`BrowserProcess`, again:** `createPool` adds no `SIGTERM`, `SIGINT` or
+  `SIGHUP` listener.
 - **`extract`:** a crash mid-extraction rejects with `BrowserUnavailableError`,
-  not a Playwright error.
+  not a Playwright error, and so does a crash while a pagination window is
+  pending, rather than serving a short listing.
 - **`server`:** both 503 mappings with `Retry-After`, a relay round-trip for
   both kinds, stale served on `overloaded`, and the new gauges.
 - **Config:** `POOL_WAIT_CAP_MS >= PRODUCE_BUDGET_MS` throws.
