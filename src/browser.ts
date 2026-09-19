@@ -121,14 +121,17 @@ type TestFaultHooks = {
   afterConnect?: (pid: number) => void | Promise<void>
   /** Replaces FILL_TIMEOUT_MS. */
   fillTimeoutMs?: number
+  /** Replaces STABLE_AFTER_MS. */
+  stableAfterMs?: number
 }
 
 export type PoolOptions = {
   observer?: PoolObserver
   /**
-   * Called once when relaunching has failed `browserMaxRelaunchFailures`
-   * times in a row. index.ts exits the process, so the container restart
-   * policy gives it a clean start; the pool never exits by itself.
+   * Called once when the browser has failed `browserMaxRelaunchFailures`
+   * times in a row -- a launch that failed, or a serving browser that died
+   * inside STABLE_AFTER_MS. index.ts exits the process, so the container
+   * restart policy gives it a clean start; the pool never exits by itself.
    */
   onFatal?: (err: Error) => void
 } & TestFaultHooks
@@ -156,6 +159,9 @@ const BACKOFF_CAP_MS = 30_000
 // A fill of POOL_SIZE contexts takes well under a second. This bounds one
 // that has wedged; see fill().
 const FILL_TIMEOUT_MS = 30_000
+// A serving browser that dies younger than this counts toward
+// BROWSER_MAX_RELAUNCH_FAILURES, as a failed launch does; see onDeath().
+const STABLE_AFTER_MS = 60_000
 
 /** Resolves after `ms`, or as soon as `wake` aborts. */
 function sleep(ms: number, wake?: AbortSignal): Promise<void> {
@@ -210,6 +216,7 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
     opts.onFatal ?? ((err: Error) => console.error(`[pool] giving up on the browser: ${firstLine(err)}`))
   const backoffBaseMs = opts.backoffBaseMs ?? BACKOFF_BASE_MS
   const fillTimeoutMs = opts.fillTimeoutMs ?? FILL_TIMEOUT_MS
+  const stableAfterMs = opts.stableAfterMs ?? STABLE_AFTER_MS
 
   function backoff(attempt: number): number {
     return Math.min(backoffBaseMs * 2 ** (attempt - 1), BACKOFF_CAP_MS)
@@ -466,7 +473,8 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
   }
 
   // A browser that dies is never trusted again: every lease on it is lost, and
-  // if it was serving, a relaunch starts at once.
+  // if it was serving, a relaunch starts -- at once if it had served for
+  // STABLE_AFTER_MS, after a backoff if it had not.
   function onDeath(gen: Generation, cause: DeathCause): void {
     // A 'starting' generation is launchGeneration's to handle: its fill fails,
     // or its `dead` check catches it, and the launch is reported as failed.
@@ -487,7 +495,40 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
     gen.records.clear()
     // A dropped connection can leave the process itself running.
     void gen.process.close(cfg.browserCloseTimeoutMs)
-    if (wasServing) startRelaunch()
+    if (!wasServing) return
+
+    // "Consecutive failures" counts a browser that died young as well as a
+    // launch that failed. One that fills and then dies soon after -- an OOM,
+    // a crash on its first navigation, pid pressure from zombies -- would
+    // otherwise reset the count at every promote and be relaunched at once,
+    // forever, when a container restart is exactly what clears that state.
+    // Not a launchFailed(): the launch worked, and the death already shows
+    // as the next launches_total{reason="crash"}.
+    const age = now() - gen.startedAt
+    if (age >= stableAfterMs) {
+      relaunchFailures = 0
+    } else {
+      relaunchFailures++
+      console.warn(
+        `[pool] browser generation ${gen.id} died ${age}ms after launch, inside the ${stableAfterMs}ms ` +
+          `stability window -- failure ${relaunchFailures} of ${cfg.browserMaxRelaunchFailures}`,
+      )
+      if (relaunchFailures >= cfg.browserMaxRelaunchFailures) {
+        giveUp(new Error(`browser generation ${gen.id} died (${cause}) ${age}ms after launch`))
+        return
+      }
+    }
+    startRelaunch()
+  }
+
+  // Past the limit the pool stops: everyone waiting is failed now rather than
+  // at their wait cap, and onFatal decides what happens to the process.
+  function giveUp(error: Error): void {
+    console.error(`[pool] ${relaunchFailures} browser failures in a row -- giving up on the browser`)
+    while (waiters.length > 0) {
+      waiters.shift()!.reject(new BrowserUnavailableError('the pool gave up on the browser'))
+    }
+    onFatal(error)
   }
 
   function startRelaunch(): void {
@@ -512,6 +553,12 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
       // A recycle launching when the browser died will adopt the empty slot
       // itself; wait for it rather than launching a second browser.
       if (launchInFlight !== null) await launchInFlight
+      // Non-zero here only when the browser that died was young (onDeath
+      // resets it otherwise), and that death waits out its backoff as a
+      // failed launch would.
+      if (relaunchFailures > 0 && !closed && serving === null) {
+        await sleep(backoff(relaunchFailures), shutdown.signal)
+      }
       while (!closed && serving === null) {
         try {
           const gen = await launchGeneration('crash')
@@ -519,7 +566,10 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
             await gen.process.close(cfg.browserCloseTimeoutMs)
             return
           }
-          relaunchFailures = 0
+          // The count is NOT reset here: a browser that fills fine and then
+          // dies young is the crash loop this has to catch. It resets once
+          // this generation has served for STABLE_AFTER_MS (on the tick, or
+          // at its death).
           promote(gen)
         } catch (err) {
           // close() ran during this launch. It is no failure of the browser,
@@ -532,11 +582,7 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
             `[pool] relaunch ${relaunchFailures} of ${cfg.browserMaxRelaunchFailures} failed: ${firstLine(error)}`,
           )
           if (relaunchFailures >= cfg.browserMaxRelaunchFailures) {
-            console.error(`[pool] ${relaunchFailures} relaunches in a row failed -- giving up on the browser`)
-            while (waiters.length > 0) {
-              waiters.shift()!.reject(new BrowserUnavailableError('no browser could be launched'))
-            }
-            onFatal(error)
+            giveUp(error)
             return
           }
           await sleep(backoff(relaunchFailures), shutdown.signal)
@@ -607,7 +653,14 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
   launchFailuresRemaining = opts.failNextLaunches ?? 0
 
   const tick = setInterval(() => {
-    if (serving !== null) serving.memoryBytes = sampleMemory(serving)
+    if (serving !== null) {
+      serving.memoryBytes = sampleMemory(serving)
+      // Stable: the failures that led up to this browser are behind it. Reset
+      // here and not only at its death, because a recycle's replacement dies
+      // with its own age, and would otherwise inherit a count this browser
+      // had long since outlived.
+      if (now() - serving.startedAt >= stableAfterMs) relaunchFailures = 0
+    }
     checkRecycle()
   }, cfg.browserCheckIntervalMs)
   tick.unref()

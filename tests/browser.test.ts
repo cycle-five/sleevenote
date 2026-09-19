@@ -427,6 +427,8 @@ describe('createPool: a browser crash', () => {
       onFatal: fatal,
       failNextLaunches: 2,
       backoffBaseMs: 50,
+      // The startup browser's death is not the failure under test here.
+      stableAfterMs: 0,
     })
     try {
       process.kill(o.launches[0]!.pid, 'SIGKILL')
@@ -453,6 +455,8 @@ describe('createPool: a browser crash', () => {
       onFatal: fatal,
       failNextLaunches: 10,
       backoffBaseMs: 10,
+      // Only the failed launches count toward the limit here.
+      stableAfterMs: 0,
     })
     try {
       const held = await gPool.acquire()
@@ -473,6 +477,84 @@ describe('createPool: a browser crash', () => {
       await gPool.close()
     }
   }, 30_000)
+
+  // Final review, 2026-09-19: a browser that filled and then died soon after
+  // -- an OOM, a crash on its first navigation, pid pressure from zombies --
+  // reset the failure count at every promote. It was relaunched at once,
+  // forever: no backoff, and onFatal never called, when a container restart
+  // is exactly what clears that state.
+  it('backs off and gives up on a browser that keeps dying young', async () => {
+    const o = observed()
+    const fatal = vi.fn()
+    const base = 500
+    const yPool = await createPool(loadConfig({ POOL_SIZE: '1', BROWSER_MAX_RELAUNCH_FAILURES: '4' }), {
+      observer: {
+        launched: (e) => {
+          o.observer.launched(e)
+          // Killed as soon as it serves: promote() runs in the microtasks
+          // straight after this call, so a timer lands after it.
+          setTimeout(() => {
+            try { process.kill(e.pid, 'SIGKILL') } catch { /* already gone */ }
+          }, 0)
+        },
+        launchFailed: o.observer.launchFailed,
+      },
+      onFatal: fatal,
+      backoffBaseMs: base,
+      stableAfterMs: 5_000,
+    })
+    try {
+      expect(await waitFor(() => fatal.mock.calls.length > 0, 20_000)).toBe(true)
+      await new Promise((r) => setTimeout(r, 300))
+      expect(fatal).toHaveBeenCalledTimes(1)
+      expect(fatal.mock.calls[0]![0]).toBeInstanceOf(Error)
+      // Four generations died young; the fourth death is the limit, so no fifth launch.
+      expect(o.launches.map((e) => e.reason)).toEqual(['startup', 'crash', 'crash', 'crash'])
+      // An early death is not a failed launch: that counter means launches that failed.
+      expect(o.failures()).toBe(0)
+      const gaps = o.launchedAt.slice(1).map((at, i) => at - o.launchedAt[i]!)
+      // backoff(1), backoff(2) and backoff(3) before the three relaunches.
+      // Lower bounds only, as in the relaunch backoff test above.
+      expect(gaps[0]!).toBeGreaterThanOrEqual(base)
+      expect(gaps[1]!).toBeGreaterThanOrEqual(2 * base)
+      expect(gaps[2]!).toBeGreaterThanOrEqual(4 * base)
+      expect(gaps[1]!).toBeGreaterThanOrEqual(gaps[0]!)
+      expect(gaps[2]!).toBeGreaterThanOrEqual(gaps[1]!)
+    } finally {
+      await yPool.close()
+    }
+  }, 40_000)
+
+  // The count resets once a browser has served STABLE_AFTER_MS, on the tick.
+  // At its own death is not enough: a recycle's replacement dies with its
+  // own young age, and would inherit failures its predecessor outlived.
+  it('forgets past failures once a browser has served the stability window', async () => {
+    let t = 0
+    const o = observed()
+    const fatal = vi.fn()
+    const sPool = await createPool(
+      loadConfig({
+        POOL_SIZE: '1',
+        BROWSER_MAX_RELAUNCH_FAILURES: '2',
+        BROWSER_MAX_AGE_MS: '60000',
+        BROWSER_CHECK_INTERVAL_MS: '50',
+      }),
+      { observer: o.observer, onFatal: fatal, now: () => t, backoffBaseMs: 50, stableAfterMs: 1_000 },
+    )
+    try {
+      process.kill(o.launches[0]!.pid, 'SIGKILL') // dies young: failure 1 of 2
+      expect(await waitFor(() => o.launches.length === 2, 15_000)).toBe(true)
+      t = 60_000 // generation 2 is now stable, and old enough to recycle
+      expect(await waitFor(() => o.launches.length === 3, 15_000)).toBe(true)
+      expect(o.launches[2]!.reason).toBe('recycle_age')
+      process.kill(o.launches[2]!.pid, 'SIGKILL') // the replacement dies young
+      expect(await waitFor(() => o.launches.length === 4, 15_000)).toBe(true)
+      expect(o.launches[3]!.reason).toBe('crash')
+      expect(fatal).not.toHaveBeenCalled()
+    } finally {
+      await sPool.close()
+    }
+  }, 40_000)
 
   // A listener on `lost` runs inside the pool's death handling. If the dead
   // generation were still the serving one at that moment, an acquire() made
@@ -565,7 +647,8 @@ describe('createPool: a browser that is alive but not answering', () => {
     const w = wedger()
     const hPool = await createPool(
       loadConfig({ POOL_SIZE: '1', BROWSER_MAX_RELAUNCH_FAILURES: '2', BROWSER_CLOSE_TIMEOUT_MS: '500' }),
-      { observer: o.observer, onFatal: fatal, afterConnect: w.afterConnect, fillTimeoutMs: 1_000, backoffBaseMs: 50 },
+      // stableAfterMs 0: only the hung fills count toward the limit.
+      { observer: o.observer, onFatal: fatal, afterConnect: w.afterConnect, fillTimeoutMs: 1_000, backoffBaseMs: 50, stableAfterMs: 0 },
     )
     try {
       w.arm()
@@ -591,7 +674,8 @@ describe('createPool: a browser that is alive but not answering', () => {
     const w = wedger()
     const cPool = await createPool(
       loadConfig({ POOL_SIZE: '1', BROWSER_MAX_RELAUNCH_FAILURES: '1', BROWSER_CLOSE_TIMEOUT_MS: '500' }),
-      { observer: o.observer, onFatal: fatal, afterConnect: w.afterConnect, fillTimeoutMs: 1_000 },
+      // stableAfterMs 0, or the startup browser's death alone reaches a limit of 1.
+      { observer: o.observer, onFatal: fatal, afterConnect: w.afterConnect, fillTimeoutMs: 1_000, stableAfterMs: 0 },
     )
     try {
       w.arm(1)
