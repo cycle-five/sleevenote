@@ -151,8 +151,9 @@ and `sleevenote_pool_waiting`, read at scrape time. Every context leased with
 callers waiting is a starved pool.
 
 The browser itself is `sleevenote_browser_generations{state="serving"|"draining"}`,
-`sleevenote_browser_age_seconds` and `sleevenote_browser_memory_bytes` (both
-absent while nothing is serving), with `sleevenote_browser_launches_total{reason}`
+`sleevenote_browser_age_seconds` (absent while nothing is serving) and
+`sleevenote_browser_memory_bytes` (absent while nothing is serving, or while
+memory cannot be measured), with `sleevenote_browser_launches_total{reason}`
 and `sleevenote_browser_launch_failures_total` counting what the manager did.
 
 ## Testing

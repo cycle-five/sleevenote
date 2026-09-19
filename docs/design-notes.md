@@ -417,13 +417,13 @@ by whichever one replaces it, without seeing the switch.
 The browser is launched with `launchServer()` rather than `launch()`, because
 only `launchServer()` hands back the child process — the pid the manager
 measures, the `exit` event it watches, and the target of the `SIGKILL` a
-browser that ignores `close()` eventually gets (`src/browser-process.ts:49-54`).
+browser that ignores `close()` eventually gets (`launchBrowserProcess()`).
 The manager drives it over a loopback WebSocket through `connect()`. A probe
 against Playwright 1.62.1 measured a SIGKILLed process firing its own `exit`
 event 5 ms later, and the browser's `disconnected` event 14 ms later — both
 well inside the 1 s a failing extraction is given to find out whether its
-lease was lost, before it is judged on its own error instead (`LOST_GRACE_MS`,
-`src/extract.ts:191`). Full numbers and the rest of the design:
+lease was lost (`LOST_GRACE_MS`), before it is judged on its own error
+instead. Full numbers and the rest of the design:
 [the browser context manager spec](docs/superpowers/specs/2026-09-19-browser-context-manager-design.md).
 
 **Recycling is blue/green, not stop-the-world.** A recycle launches the
@@ -438,34 +438,33 @@ caller ever waits on a recycle.
 tree counts every shared page once per process, which overstates the tree by
 a large and varying amount — not something a threshold could trust.
 `/proc/<pid>/smaps_rollup`'s `Pss` divides each shared page among the
-processes that map it, so a tree's PSS actually adds up
-(`src/procmem.ts:54-70`). A process missing `smaps_rollup` — a pre-4.14
-kernel, or a permissions quirk — falls back to `VmRSS`.
+processes that map it, so a tree's PSS actually adds up (`memoryOf()`). A
+process missing `smaps_rollup` — a pre-4.14 kernel, or a permissions quirk —
+falls back to `VmRSS`.
 
 **A crash triggers relaunch with exponential backoff:** 1 s, 2 s, 4 s, …
-capped at 30 s (`src/browser.ts:145-146,186-188`). After
-`BROWSER_MAX_RELAUNCH_FAILURES` (default 5, `src/config.ts:111`) failures in a
-row, the manager calls `onFatal` once and stops trying (`src/browser.ts:461-467`);
-`index.ts` exits the process so the container restart policy gives it a clean
-start (`src/index.ts:35-46`). Exiting beats answering 503 forever, because
-neither stack has a healthcheck on sleevenote — a process that stays up but
-broken is an outage nobody is told about.
+capped at 30 s (`backoff()`). After `BROWSER_MAX_RELAUNCH_FAILURES` (default
+5) failures in a row, the manager calls `onFatal` once and stops trying
+(`relaunch()`); `index.ts` exits the process so the container restart policy
+gives it a clean start (`poolOptionsFor()`). Exiting beats answering 503
+forever, because neither stack has a healthcheck on sleevenote — a process
+that stays up but broken is an outage nobody is told about.
 
 **Overload answers 503 under two distinct codes.** `overloaded` means every
 context stayed busy for `POOL_WAIT_CAP_MS`; `browser_unavailable` means the
 browser died mid-lookup or is being relaunched. They are kept apart because
 they call for different operator responses — raise `POOL_SIZE`, or go read
-the crash logs — the same reason this service keeps its four extraction
-failures apart. Both carry `Retry-After: 5` (`src/server.ts:390-401`).
+the crash logs — the same reason this service keeps its five extraction
+failures apart. Both carry `Retry-After: 5`.
 
 **The wait cap's default follows the budget, not a fixed number.** Left
 unset, `POOL_WAIT_CAP_MS` is
-`Math.max(1, Math.min(20000, Math.floor(PRODUCE_BUDGET_MS / 2)))`
-(`src/config.ts:61-64`). Set explicitly at or above `PRODUCE_BUDGET_MS`,
-`loadConfig` throws (`src/config.ts:65-69`) — a cap there could never fire,
-and the misconfiguration would otherwise be silent. A fixed default with the
-same check would instead break any deployment that shortened the budget
-without ever hearing of this knob.
+`Math.max(1, Math.min(20000, Math.floor(PRODUCE_BUDGET_MS / 2)))`, computed
+in `loadConfig()`. Set explicitly at or above `PRODUCE_BUDGET_MS`,
+`loadConfig()` throws — a cap there could never fire, and the
+misconfiguration would otherwise be silent. A fixed default with the same
+check would instead break any deployment that shortened the budget without
+ever hearing of this knob.
 
 ## Redis client tuning
 
