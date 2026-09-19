@@ -403,6 +403,85 @@ listing it did get, rather than costing the whole budget and the lease.
 `sleevenote_pool_contexts` and `sleevenote_pool_waiting` make a starved pool
 visible from outside.
 
+### Generations: surviving the browser itself
+
+A **generation** is one Chromium process plus the contexts made from it,
+moving through `starting → serving → draining → closed`. It is `starting`
+only while it launches and fills to `POOL_SIZE` contexts; a browser that dies
+during that fill is reported as a failed launch, not a crash, because nothing
+outside the launch has seen it yet. Promotion makes it `serving`, and
+**exactly one generation ever serves at a time** — every new lease comes from
+it, and a caller already queued when the serving generation changes is served
+by whichever one replaces it, without seeing the switch.
+
+The browser is launched with `launchServer()` rather than `launch()`, because
+only `launchServer()` hands back the child process — the pid the manager
+measures, the `exit` event it watches, and the target of the `SIGKILL` a
+browser that ignores `close()` eventually gets (`launchBrowserProcess()`).
+The manager drives it over a loopback WebSocket through `connect()`. A probe
+against Playwright 1.62.1 measured a SIGKILLed process firing its own `exit`
+event 5 ms later, and the browser's `disconnected` event 14 ms later — both
+well inside the 1 s a failing extraction is given to find out whether its
+lease was lost (`LOST_GRACE_MS`), before it is judged on its own error
+instead. Full numbers and the rest of the design:
+[the browser context manager spec](superpowers/specs/2026-09-19-browser-context-manager-design.md).
+
+**A launch is bounded end to end.** `launchServer()` and `connect()` have
+`LAUNCH_TIMEOUT_MS`; the fill that follows (`newContext`, `newPage`, `route`)
+has `FILL_TIMEOUT_MS`, 30 s, against a real fill of well under a second
+(`fill()`). A Chromium that is alive but not answering used to hold the fill
+forever, which wedged every launch path at a permanent 503 without an exit.
+Now the launch fails at the bound and the browser is SIGKILLed.
+
+**A shutdown is not a crash.** Playwright's own `SIGTERM`, `SIGINT` and
+`SIGHUP` handlers are turned off. Left on, they closed Chromium before
+`index.ts`'s shutdown ran, so every `docker stop` counted a crash and
+relaunched mid-drain.
+
+**Recycling is blue/green, not stop-the-world.** A recycle launches the
+replacement generation and fills it to `POOL_SIZE` before the serving pointer
+moves; only then does the old generation start draining, closing its idle
+contexts at once and each leased one as its lease ends. The cost is a few
+seconds of roughly **2× browser memory** — a single browser has been measured
+at 1.3 GB against a 7.7 GB production host — bought back by the fact that no
+caller ever waits on a recycle.
+
+**Memory is measured as PSS, not RSS.** Summing RSS across a Chromium process
+tree counts every shared page once per process, which overstates the tree by
+a large and varying amount — not something a threshold could trust.
+`/proc/<pid>/smaps_rollup`'s `Pss` divides each shared page among the
+processes that map it, so a tree's PSS actually adds up (`memoryOf()`). A
+process missing `smaps_rollup` — a pre-4.14 kernel, or a permissions quirk —
+falls back to `VmRSS`.
+
+**A crash triggers relaunch with exponential backoff:** 1 s, 2 s, 4 s, …
+capped at 30 s (`backoff()`). A failure is a launch that fails, or a browser
+that dies before it has served for `STABLE_AFTER_MS` (60 s): one that fills
+and then keeps dying soon after is a crash loop, which a container restart
+clears and an instant relaunch never would. A browser that dies after serving
+that long relaunches at once. After `BROWSER_MAX_RELAUNCH_FAILURES` (default 5)
+failures in a row, the manager calls `onFatal` once and stops trying
+(`relaunch()`, `onDeath()`); `index.ts` exits the process so the container
+restart policy gives it a clean start (`poolOptionsFor()`). Exiting beats
+answering 503 forever, because neither stack has a healthcheck on sleevenote
+— a process that stays up but broken is an outage nobody is told about.
+
+**Overload answers 503 under two distinct codes.** `overloaded` means every
+context stayed busy for `POOL_WAIT_CAP_MS`; `browser_unavailable` means the
+browser died mid-lookup or is being relaunched. They are kept apart because
+they call for different operator responses — raise `POOL_SIZE`, or go read
+the crash logs — the same reason this service keeps its five extraction
+failures apart. Both carry `Retry-After: 5`.
+
+**The wait cap's default follows the budget, not a fixed number.** Left
+unset, `POOL_WAIT_CAP_MS` is
+`Math.max(1, Math.min(20000, Math.floor(PRODUCE_BUDGET_MS / 2)))`, computed
+in `loadConfig()`. Set explicitly at or above `PRODUCE_BUDGET_MS`,
+`loadConfig()` throws — a cap there could never fire, and the
+misconfiguration would otherwise be silent. A fixed default with the same
+check would instead break any deployment that shortened the budget without
+ever hearing of this knob.
+
 ## Redis client tuning
 
 ioredis's defaults leave a command queued through up to 20 retries — roughly

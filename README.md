@@ -34,6 +34,13 @@ has no listing to be partial. See
 for why the default stays strict and why the flag is per-request rather than
 a server setting.
 
+When sleevenote cannot take a lookup on, it answers **503** with
+`Retry-After: 5` rather than making the caller wait: `overloaded` when every
+browser context stayed busy for `POOL_WAIT_CAP_MS`, and `browser_unavailable`
+when the browser died mid-lookup or is being relaunched. Both are transient.
+Neither says anything about Spotify's page, which is why they are not 502s.
+A key with a stale cache entry serves that entry instead.
+
 Real request/response examples, captured from a running deployment, live in
 [docs/examples](docs/examples/README.md) -- a committed contract an
 out-of-repo client can build and test against.
@@ -97,6 +104,13 @@ copy-pasteable version with fuller comments:
 | `POOL_SIZE` | `2` | browser contexts kept warm; excess requests queue, they don't fail |
 | `CONTEXT_MAX_USES` | `50` | extractions served before a context is recycled |
 | `CONTEXT_CLOSE_TIMEOUT_MS` | `5000` | how long a context close may take before it is abandoned and the slot refilled. Every close is on a release path, so an unbounded one holds the slot |
+| `BROWSER_MAX_AGE_MS` | `21600000` (6h) | recycle the whole browser once it is this old. Blue/green: the replacement is launched first, and the old one drains |
+| `BROWSER_MAX_LEASES` | `1000` | ...or once it has served this many leases |
+| `BROWSER_MAX_MEMORY_MB` | `2048` | ...or once its process tree's PSS passes this. `0` turns the memory trigger off; it is off anyway where there is no `/proc` |
+| `BROWSER_CHECK_INTERVAL_MS` | `60000` | how often the triggers are checked and memory is sampled |
+| `BROWSER_CLOSE_TIMEOUT_MS` | `10000` | how long a browser may take to close before it is SIGKILLed |
+| `BROWSER_MAX_RELAUNCH_FAILURES` | `5` | consecutive browser failures -- a relaunch that fails, or a browser that dies within 60s of launch -- before the process exits, so the container restart policy takes over |
+| `POOL_WAIT_CAP_MS` | `min(20000, PRODUCE_BUDGET_MS / 2)`, floored, at least 1 | how long a caller may wait for a context before a 503 `overloaded`. An explicit value must be below `PRODUCE_BUDGET_MS` |
 | `NAV_TIMEOUT_MS` | `45000` | cap on a single page navigation |
 | `ENTITY_DATA_TIMEOUT_MS` | `15000` | how long to wait for Spotify's entity query after the page looks settled. Deliberately far below `NAV_TIMEOUT_MS`: it covers the gap between "went idle" and "data arrived", so reusing the nav timeout would make every genuinely silent extraction cost 45s before it could say so. Also bounds waiting for response bodies to finish arriving, and each pagination window |
 | `PRODUCE_BUDGET_MS` | `150000` | cap on one whole extraction, including the wait for a context; also sets the cache's single-flight lock TTL (see `src/config.ts`). Enforced by the pool: a lease still held when it runs out is revoked and its context replaced |
@@ -135,6 +149,12 @@ A running instance reports its own build as
 The browser pool's state is `sleevenote_pool_contexts{state="free"|"leased"}`
 and `sleevenote_pool_waiting`, read at scrape time. Every context leased with
 callers waiting is a starved pool.
+
+The browser itself is `sleevenote_browser_generations{state="serving"|"draining"}`,
+`sleevenote_browser_age_seconds` (absent while nothing is serving) and
+`sleevenote_browser_memory_bytes` (absent while nothing is serving, or while
+memory cannot be measured), with `sleevenote_browser_launches_total{reason}`
+and `sleevenote_browser_launch_failures_total` counting what the manager did.
 
 ## Testing
 

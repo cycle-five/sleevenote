@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { shutdownSequence } from '../src/index.js'
+import { describe, it, expect, vi } from 'vitest'
+import { shutdownSequence, poolOptionsFor } from '../src/index.js'
+import { browserLaunches, browserLaunchFailures } from '../src/metrics.js'
 
 describe('shutdownSequence', () => {
   it('closes the HTTP server, then the pool, then the store -- in that order', async () => {
@@ -42,5 +43,40 @@ describe('shutdownSequence', () => {
     await shutdownSequence({ app, pool, store })
 
     expect(poolSawAppClosed).toBe(true)
+  })
+})
+
+describe('poolOptionsFor', () => {
+  it('counts launches by reason and failed launches', async () => {
+    const opts = poolOptionsFor(() => {})
+    const before = (await browserLaunches.get()).values.find((v) => v.labels.reason === 'crash')?.value ?? 0
+    opts.observer!.launched({ reason: 'crash', generation: 2, pid: 123 })
+    const after = (await browserLaunches.get()).values.find((v) => v.labels.reason === 'crash')?.value ?? 0
+    expect(after).toBe(before + 1)
+    const failsBefore = (await browserLaunchFailures.get()).values[0]?.value ?? 0
+    opts.observer!.launchFailed()
+    expect((await browserLaunchFailures.get()).values[0]?.value ?? 0).toBe(failsBefore + 1)
+  })
+
+  // The pool never exits by itself; index.ts decides, so the container
+  // restart policy gives the service a clean start.
+  it('exits non-zero when the pool gives up on the browser', () => {
+    const exits: number[] = []
+    poolOptionsFor((code) => { exits.push(code) }).onFatal!(new Error('no browser'))
+    expect(exits).toEqual([1])
+  })
+
+  // Playwright folds a call log into `message`; the exit line stays one line.
+  it('logs only the first line of the error it exits on', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      poolOptionsFor(() => {}).onFatal!(new Error('browserType.launchServer: Timeout 30000ms exceeded.\nCall log:\n  - <launching> chrome'))
+      expect(error).toHaveBeenCalledTimes(1)
+      const line = String(error.mock.calls[0]![0])
+      expect(line).toContain('Timeout 30000ms exceeded.')
+      expect(line).not.toContain('\n')
+    } finally {
+      error.mockRestore()
+    }
   })
 })

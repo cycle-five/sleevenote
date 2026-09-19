@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import type { Page, Request } from 'playwright'
-import { createPool } from '../src/browser.js'
+import { createPool, BrowserUnavailableError, type LaunchEvent } from '../src/browser.js'
 import { loadConfig } from '../src/config.js'
 import {
   recordResponses,
@@ -84,6 +84,8 @@ describe('recordResponses', () => {
     expect(bodies).toContainEqual({ hello: 'world' })
     expect(capture.responses.every((r) => r.url.endsWith('.json'))).toBe(true)
     expect(capture.navStatus).toBe(200)
+    // Nothing failed, so there is nothing for runExtraction to rule out.
+    expect(capture.pageCallFailed).toBe(false)
   })
 })
 
@@ -1575,6 +1577,138 @@ describe('extract: a stuck extraction', () => {
       }
     } finally {
       await wPool.close()
+    }
+  }, 30_000)
+
+  // The other catch that swallows a page call: a response body read. One the
+  // browser dies under has to be flagged just like a failed window.
+  it('flags a body read that the browser died under', async () => {
+    const server: Server = createServer((req, res) => {
+      if (req.url === '/page') {
+        res.writeHead(200, { 'content-type': 'text/html' })
+        res.end(`<html><body><script>
+          setTimeout(() => fetch('/stall.json'), 600);
+          setTimeout(() => fetch('${PATHFINDER_URL}', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'authorization': '${HARVEST_TOKEN}' },
+            body: JSON.stringify({
+              operationName: 'fetchPlaylistContents',
+              variables: { uri: 'spotify:playlist:readId', offset: 0, limit: 25 },
+            }),
+          }), 800);
+        </script></body></html>`)
+        return
+      }
+      if (req.url === '/stall.json') {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.write('{"never":') // ...and never another byte
+        return
+      }
+      res.writeHead(404).end()
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const port = (server.address() as AddressInfo).port
+
+    const launches: LaunchEvent[] = []
+    const rPool = await createPool(loadConfig({ POOL_SIZE: '1' }), {
+      observer: { launched: (e) => { launches.push(e) }, launchFailed: () => {} },
+    })
+    try {
+      const lease = await rPool.acquire()
+      let pathfinderAnswered = (): void => {}
+      const answered = new Promise<void>((resolve) => { pathfinderAnswered = resolve })
+      // 25 of 25: no window to fetch, so the body read is the only page call
+      // left that can fail.
+      await routePathfinder(lease.page, () => {
+        pathfinderAnswered()
+        return playlistPageResponse('readId', { offset: 0, limit: 25, itemCount: 25, totalCount: 25, entity: true }).body
+      })
+      const capturing = recordResponses(lease.page, `http://127.0.0.1:${port}/page`, 'playlist', 'readId', 10_000, 5_000)
+      expect(await settlesWithin(answered, 10_000)).not.toBe(TIMED_OUT)
+      // Now inside the bounded wait for /stall.json's body.
+      await new Promise((r) => setTimeout(r, 300))
+      process.kill(launches[0]!.pid, 'SIGKILL')
+      const capture = await settlesWithin(capturing, 10_000)
+      expect(capture).not.toBe(TIMED_OUT)
+      if (capture !== TIMED_OUT) expect(capture.pageCallFailed).toBe(true)
+      await lease.release()
+    } finally {
+      await rPool.close()
+      server.closeAllConnections()
+      await new Promise((r) => server.close(r))
+    }
+  }, 30_000)
+
+  // Final review, 2026-09-19: the window loop above swallows every failed
+  // page call, "Browser closed" included, and returned a normal capture. A
+  // crash mid-pagination went out as a short listing: a 200 to a caller that
+  // opts into partials -- cracktunes does -- cached for up to 30 days, and a
+  // 502 that blamed Spotify to one that does not.
+  it('reports a browser crash while a window is pending as BrowserUnavailableError, not a short listing', async () => {
+    const id = 'crashWindowId'
+    const launches: LaunchEvent[] = []
+    // A window long enough to still be pending when the browser is killed.
+    const cCfg = loadConfig({ POOL_SIZE: '1', ENTITY_DATA_TIMEOUT_MS: '10000' })
+    const cPool = await createPool(cCfg, {
+      observer: { launched: (e) => { launches.push(e) }, launchFailed: () => {} },
+    })
+    try {
+      const page = await routedPage(cPool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/html', body: windowedQueryPage(id, 25) }),
+      )
+      let windowAsked = (): void => {}
+      const asked = new Promise<void>((resolve) => { windowAsked = resolve })
+      await page.route(PATHFINDER_URL, (route) => {
+        const req = route.request()
+        if (req.method() === 'OPTIONS') {
+          return route.fulfill({
+            status: 204,
+            headers: {
+              'access-control-allow-origin': '*',
+              'access-control-allow-methods': 'POST, OPTIONS',
+              'access-control-allow-headers': req.headers()['access-control-request-headers'] ?? '*',
+            },
+          })
+        }
+        const { offset } = (req.postDataJSON() as { variables: { offset: number } }).variables
+        if (offset > 0) {
+          windowAsked() // ...and never answered
+          return
+        }
+        return route.fulfill({
+          status: 200,
+          headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+          body: JSON.stringify(playlistPageResponse(id, { offset: 0, limit: 25, itemCount: 25, totalCount: 50, entity: true }).body),
+        })
+      })
+
+      const pending = extract('playlist', id, cPool, cCfg).catch((e: unknown) => e)
+      expect(await settlesWithin(asked, 10_000)).not.toBe(TIMED_OUT)
+      process.kill(launches[0]!.pid, 'SIGKILL')
+      const outcome = await settlesWithin(pending, 10_000)
+      expect(outcome).toBeInstanceOf(BrowserUnavailableError)
+    } finally {
+      await cPool.close()
+    }
+  }, 30_000)
+
+  it('reports a browser crash mid-extraction as BrowserUnavailableError, not as the Playwright error it interrupted', async () => {
+    const launches: LaunchEvent[] = []
+    const cCfg = loadConfig({ POOL_SIZE: '1' })
+    const cPool = await createPool(cCfg, {
+      observer: { launched: (e) => { launches.push(e) }, launchFailed: () => {} },
+    })
+    try {
+      const page = await routedPage(cPool)
+      // The document never arrives, so the extraction sits in goto.
+      await page.route('https://open.spotify.com/**', () => {})
+      const pending = extract('track', 'crashId', cPool, cCfg).catch((e: unknown) => e)
+      await new Promise((r) => setTimeout(r, 500))
+      process.kill(launches[0]!.pid, 'SIGKILL')
+      expect(await settlesWithin(pending, 10_000)).toBeInstanceOf(BrowserUnavailableError)
+    } finally {
+      await cPool.close()
     }
   }, 30_000)
 })
