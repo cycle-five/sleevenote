@@ -86,17 +86,30 @@ type ContextRecord = {
 
 type Waiter = { resolve: (record: ContextRecord) => void; reject: (err: Error) => void }
 
+// Each sets its own `name`, as ExtractionError does: unnamed, they read as a
+// bare `Error: ...` in a log line, which is where telling them apart matters.
 export class PoolClosedError extends Error {
   constructor() {
     super('browser pool closed while waiting for a free context')
+    this.name = new.target.name
   }
 }
 
 /** No browser could serve: the lease's browser died, or none was serving while the caller waited. */
-export class BrowserUnavailableError extends Error {}
+export class BrowserUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = new.target.name
+  }
+}
 
 /** A caller waited POOL_WAIT_CAP_MS for a context while a browser was serving. */
-export class PoolOverloadedError extends Error {}
+export class PoolOverloadedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = new.target.name
+  }
+}
 
 // Test-only fault injection, not part of the Pool contract: `createPool(cfg)`
 // alone is the real signature. The hooks ride in the same options object as

@@ -1,5 +1,12 @@
 import { describe, it, expect, afterAll, vi } from 'vitest'
-import { createPool, BrowserUnavailableError, PoolOverloadedError, type LaunchEvent, type Lease } from '../src/browser.js'
+import {
+  createPool,
+  BrowserUnavailableError,
+  PoolClosedError,
+  PoolOverloadedError,
+  type LaunchEvent,
+  type Lease,
+} from '../src/browser.js'
 import { loadConfig } from '../src/config.js'
 
 const cfg = loadConfig({ POOL_SIZE: '2', CONTEXT_MAX_USES: '3' })
@@ -915,6 +922,16 @@ describe('createPool: recycling the browser', () => {
       await dPool.close()
     }
   }, 60_000)
+})
+
+// Unnamed, all three read as a bare `Error: ...` in a log line, which is
+// exactly where telling them apart matters.
+describe('pool errors', () => {
+  it('name themselves', () => {
+    expect(String(new BrowserUnavailableError('gone'))).toBe('BrowserUnavailableError: gone')
+    expect(String(new PoolOverloadedError('busy'))).toBe('PoolOverloadedError: busy')
+    expect(new PoolClosedError().name).toBe('PoolClosedError')
+  })
 })
 
 // Before this, an excess caller waited up to the whole budget just to queue,

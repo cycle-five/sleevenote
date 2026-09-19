@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { shutdownSequence, poolOptionsFor } from '../src/index.js'
 import { browserLaunches, browserLaunchFailures } from '../src/metrics.js'
 
@@ -64,5 +64,19 @@ describe('poolOptionsFor', () => {
     const exits: number[] = []
     poolOptionsFor((code) => { exits.push(code) }).onFatal!(new Error('no browser'))
     expect(exits).toEqual([1])
+  })
+
+  // Playwright folds a call log into `message`; the exit line stays one line.
+  it('logs only the first line of the error it exits on', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      poolOptionsFor(() => {}).onFatal!(new Error('browserType.launchServer: Timeout 30000ms exceeded.\nCall log:\n  - <launching> chrome'))
+      expect(error).toHaveBeenCalledTimes(1)
+      const line = String(error.mock.calls[0]![0])
+      expect(line).toContain('Timeout 30000ms exceeded.')
+      expect(line).not.toContain('\n')
+    } finally {
+      error.mockRestore()
+    }
   })
 })

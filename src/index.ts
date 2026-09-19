@@ -39,7 +39,10 @@ export function poolOptionsFor(exit: (code: number) => void): PoolOptions {
       launchFailed: () => browserLaunchFailures.inc(),
     },
     onFatal: (err) => {
-      console.error(`[sleevenote] the browser cannot be relaunched -- exiting so the container restarts: ${err.message}`)
+      // First line only, as extract.ts logs: Playwright folds a multi-line
+      // call log into `message`.
+      const firstLine = err.message.split('\n')[0] ?? err.message
+      console.error(`[sleevenote] the pool gave up on the browser -- exiting so the container restarts: ${firstLine}`)
       exit(1)
     },
   }
