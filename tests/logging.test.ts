@@ -113,6 +113,7 @@ describe('evidenceFrom', () => {
         rec('https://open.spotify.com/x.json', 200),
       ],
       template: null,
+      pageCallFailed: false,
     })
     expect(e.recorded).toBe(3)
     expect(e.statuses).toEqual([200, 404])
@@ -121,7 +122,7 @@ describe('evidenceFrom', () => {
   // Zero recorded responses is the signature of a capture that saw nothing --
   // the case being misreported as "this entity does not exist".
   it('reports an empty capture distinctly from one that recorded responses', () => {
-    expect(evidenceFrom({ navStatus: 200, responses: [], template: null })).toEqual({
+    expect(evidenceFrom({ navStatus: 200, responses: [], template: null, pageCallFailed: false })).toEqual({
       navStatus: 200,
       recorded: 0,
       statuses: [],
@@ -131,13 +132,13 @@ describe('evidenceFrom', () => {
 
   it('reports distinct paths, not full URLs, and bounds how many', () => {
     const many = Array.from({ length: 20 }, (_, i) => rec(`https://x.test/p${i}?q=1`, 200))
-    const e = evidenceFrom({ navStatus: 200, responses: many, template: null })
+    const e = evidenceFrom({ navStatus: 200, responses: many, template: null, pageCallFailed: false })
     expect(e.paths.length).toBeLessThanOrEqual(8)
     expect(e.paths[0]).toBe('/p0')
   })
 
   it('does not discard a response whose URL will not parse', () => {
-    const e = evidenceFrom({ navStatus: 404, responses: [rec('not a url', 200)], template: null })
+    const e = evidenceFrom({ navStatus: 404, responses: [rec('not a url', 200)], template: null, pageCallFailed: false })
     expect(e.recorded).toBe(1)
     expect(e.paths).toEqual(['not a url'])
   })

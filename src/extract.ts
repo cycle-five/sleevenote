@@ -44,6 +44,13 @@ export type Capture = {
   responses: Recorded[]
   /** The first windowed pathfinder request the page issued, if any. See [`QueryTemplate`]. */
   template: QueryTemplate | null
+  /**
+   * A call into the page failed and was swallowed rather than thrown: a
+   * pagination window, or a response body read. That can be the browser
+   * dying under the capture, which `runExtraction` rules out before it judges
+   * or serves anything captured here.
+   */
+  pageCallFailed: boolean
 }
 
 /**
@@ -271,6 +278,8 @@ export async function recordResponses(
 ): Promise<Capture> {
   const recorded: Recorded[] = []
   let navStatus: number | null = null
+  // Set by every catch below that swallows a failed page call; see Capture.
+  let pageCallFailed = false
 
   // Resolved by the first pathfinder response. Created BEFORE `goto` on
   // purpose: a response that arrives while we are still navigating has to
@@ -292,8 +301,18 @@ export async function recordResponses(
     const contentType = response.headers()['content-type'] ?? ''
     if (!contentType.includes('json')) return
     if (response.url().startsWith(PATHFINDER_URL)) sawEntityData()
+    // Read and parse apart, as response.json() does inside: only the read is
+    // a call into the browser, and only its failure can mean the browser went.
+    let text: string
     try {
-      recorded.push({ url: response.url(), status: response.status(), body: await response.json() })
+      text = await response.text()
+    } catch {
+      pageCallFailed = true
+      return
+    }
+    try {
+      const body: unknown = JSON.parse(text)
+      recorded.push({ url: response.url(), status: response.status(), body })
     } catch {
       // A JSON content-type that isn't JSON is not a reason to fail.
     }
@@ -332,7 +351,7 @@ export async function recordResponses(
     // virtualized list to recover, so whichever branch below we took would be
     // spent either paging a shell or scrolling a placeholder.
     if (navStatus !== null && navStatus >= 400) {
-      return { navStatus, responses: recorded, template: templates[0] ?? null }
+      return { navStatus, responses: recorded, template: templates[0] ?? null, pageCallFailed }
     }
 
     // Wait for the data itself, not for a proxy for it.
@@ -427,6 +446,10 @@ export async function recordResponses(
           // layer instead, and that route is closed here precisely because
           // this path does not throw. It is how store.ts reports a connection
           // error for the same reason. `id` is the correlation key.
+          //
+          // Swallowed, but flagged: "Browser closed" lands here too, and a
+          // crash is not a short listing.
+          pageCallFailed = true
           console.warn(
             `[extract] ${kind} ${id}: window ${i + 1} of ${offsets.length} failed at offset ${offset} ` +
               `(limit ${limit}, declared total ${total ?? 'unknown'}) -- listing will be short: ` +
@@ -490,7 +513,7 @@ export async function recordResponses(
     page.off('request', onRequest)
   }
 
-  return { navStatus, responses: recorded, template: templates[0] ?? null }
+  return { navStatus, responses: recorded, template: templates[0] ?? null, pageCallFailed }
 }
 
 function entityUrl(kind: 'track' | 'album' | 'playlist', id: string): string {
@@ -531,6 +554,13 @@ async function runExtraction(
     )
     const { navStatus, responses: recorded } = capture
 
+    // Before the capture is judged or served: a page call it swallowed may
+    // have been the browser dying, whose notice can land a moment after the
+    // call failed (see LOST_GRACE_MS). Served, a crash mid-pagination is a
+    // short listing a caller may cache for 30 days; judged, it blames Spotify.
+    if (capture.pageCallFailed && !lease.lost.aborted) await abortedWithin(lease.lost, LOST_GRACE_MS)
+    if (lease.lost.aborted) throw lease.lost.reason
+
     // Absence has to be POSITIVELY evidenced, and the navigation status is the
     // only thing that carries it: a dead entity records no JSON at all, which
     // is indistinguishable from a capture that simply saw nothing. Getting
@@ -566,6 +596,11 @@ async function runExtraction(
     //
     // ExtractionEmptyError above keeps its throw deliberately -- zero tracks
     // is not a partial listing, it is extraction that stopped matching.
+    //
+    // A last look: a browser that died after the capture's last page call
+    // can still have cut it short -- a body read in flight -- without any
+    // call failing.
+    if (lease.lost.aborted) throw lease.lost.reason
     return result
   } catch (err) {
     // A crash is reported as what it was, not as whichever Playwright call
