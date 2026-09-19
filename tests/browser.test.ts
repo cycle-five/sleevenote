@@ -474,3 +474,102 @@ describe('createPool: a browser crash', () => {
     }
   }, 30_000)
 })
+
+describe('createPool: recycling the browser', () => {
+  it('recycles on age, draining the old browser rather than cutting it off', async () => {
+    let t = 0
+    const o = observed()
+    const rPool = await createPool(
+      loadConfig({ POOL_SIZE: '1', BROWSER_MAX_AGE_MS: '60000', BROWSER_CHECK_INTERVAL_MS: '50' }),
+      { observer: o.observer, now: () => t },
+    )
+    try {
+      const old = await rPool.acquire()
+      t = 60_000
+      expect(await waitFor(() => rPool.stats().generations.draining === 1, 15_000)).toBe(true)
+      expect(o.launches.map((e) => e.reason)).toEqual(['startup', 'recycle_age'])
+
+      // Drained, not revoked: the lease on the old browser still works.
+      await old.page.setContent('<h1>still mine</h1>')
+      expect(await old.page.textContent('h1')).toBe('still mine')
+
+      // A draining browser never hands out a context; the new one does.
+      const fresh = await settlesWithin(rPool.acquire(), 2_000)
+      expect(fresh).not.toBe(TIMED_OUT)
+      if (fresh === TIMED_OUT) return
+      expect(fresh.page.context().browser()).not.toBe(old.page.context().browser())
+      expect(rPool.liveContexts()).toBe(1)
+
+      await fresh.release()
+      await old.release()
+      expect(await waitFor(() => rPool.stats().generations.draining === 0, 15_000)).toBe(true)
+      expect(await waitFor(() => !isAlive(o.launches[0]!.pid), 15_000)).toBe(true)
+    } finally {
+      await rPool.close()
+    }
+  }, 60_000)
+
+  it('recycles once BROWSER_MAX_LEASES leases have been served', async () => {
+    const o = observed()
+    const lPool = await createPool(
+      loadConfig({ POOL_SIZE: '1', BROWSER_MAX_LEASES: '3', BROWSER_CHECK_INTERVAL_MS: '600000' }),
+      { observer: o.observer },
+    )
+    try {
+      for (let i = 0; i < 2; i++) await (await lPool.acquire()).release()
+      await new Promise((r) => setTimeout(r, 200))
+      expect(o.launches).toHaveLength(1) // two leases: under the limit
+      await (await lPool.acquire()).release()
+      expect(await waitFor(() => o.launches.length === 2, 15_000)).toBe(true)
+      expect(o.launches[1]!.reason).toBe('recycle_leases')
+      // Nothing was leased from the old browser, so it drains at once.
+      expect(await waitFor(() => !isAlive(o.launches[0]!.pid), 15_000)).toBe(true)
+    } finally {
+      await lPool.close()
+    }
+  }, 60_000)
+
+  it('recycles when the browser grows past BROWSER_MAX_MEMORY_MB', async () => {
+    let bytes = 1
+    const o = observed()
+    const mPool = await createPool(
+      loadConfig({ POOL_SIZE: '1', BROWSER_MAX_MEMORY_MB: '100', BROWSER_CHECK_INTERVAL_MS: '50' }),
+      { observer: o.observer, memoryOf: () => bytes },
+    )
+    try {
+      await new Promise((r) => setTimeout(r, 300))
+      expect(o.launches).toHaveLength(1) // under the limit
+      bytes = 100 * 1024 * 1024
+      expect(await waitFor(() => o.launches.length === 2, 15_000)).toBe(true)
+      bytes = 1 // or the new browser, measured by the same fake, recycles too
+      expect(o.launches[1]!.reason).toBe('recycle_memory')
+    } finally {
+      await mPool.close()
+    }
+  }, 60_000)
+
+  it('keeps the old browser serving when a recycle launch fails, and never gives up over it', async () => {
+    let t = 0
+    const o = observed()
+    const fatal = vi.fn()
+    const fPool = await createPool(
+      loadConfig({ POOL_SIZE: '1', BROWSER_MAX_AGE_MS: '60000', BROWSER_CHECK_INTERVAL_MS: '50' }),
+      { observer: o.observer, now: () => t, failNextLaunches: 1, onFatal: fatal },
+    )
+    try {
+      t = 60_000
+      expect(await waitFor(() => o.failures() === 1, 15_000)).toBe(true)
+      expect(fPool.stats().generations).toEqual({ serving: 1, draining: 0 })
+      const lease = await settlesWithin(fPool.acquire(), 2_000)
+      expect(lease).not.toBe(TIMED_OUT)
+      if (lease !== TIMED_OUT) await lease.release()
+
+      // Past the backoff, the next attempt succeeds.
+      t = 60_000 + 60_000
+      expect(await waitFor(() => o.launches.length === 2, 15_000)).toBe(true)
+      expect(fatal).not.toHaveBeenCalled()
+    } finally {
+      await fPool.close()
+    }
+  }, 60_000)
+})

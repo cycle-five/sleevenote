@@ -107,6 +107,8 @@ type TestFaultHooks = {
   failNextLaunches?: number
   /** Replaces the 1s base of the relaunch and recycle backoff. */
   backoffBaseMs?: number
+  /** Replaces the clock the age trigger reads. */
+  now?: () => number
 }
 
 export type PoolOptions = {
@@ -182,6 +184,12 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
     return Math.min(backoffBaseMs * 2 ** (attempt - 1), BACKOFF_CAP_MS)
   }
 
+  const now = opts.now ?? Date.now
+  // At most one launch in flight: a recycle, or a relaunch's wait on it.
+  let launchInFlight: Promise<void> | null = null
+  let recycleFailures = 0
+  let nextRecycleAt = 0
+
   async function createContext(gen: Generation): Promise<ContextRecord> {
     if (failuresRemaining > 0) {
       failuresRemaining--
@@ -215,7 +223,7 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
       id: nextGenerationId++,
       process,
       state: 'starting',
-      startedAt: Date.now(),
+      startedAt: now(),
       leases: 0,
       records: new Set(),
       free: [],
@@ -239,9 +247,35 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
   }
 
   function promote(gen: Generation): void {
+    const old = serving
     gen.state = 'serving'
     serving = gen
     while (waiters.length > 0 && gen.free.length > 0) waiters.shift()!.resolve(gen.free.shift()!)
+    if (old !== null && old !== gen) startDraining(old)
+  }
+
+  // A draining browser never hands a context out again: its idle contexts
+  // close now, and each leased one closes when its lease ends. It closes when
+  // the last one does -- at most PRODUCE_BUDGET_MS away, since that is when a
+  // lease is revoked.
+  function startDraining(gen: Generation): void {
+    gen.state = 'draining'
+    draining.add(gen)
+    for (const record of gen.free) {
+      gen.records.delete(record)
+      void closeContext(record)
+    }
+    gen.free = []
+    console.warn(`[pool] browser generation ${gen.id} draining, ${gen.records.size} lease(s) outstanding`)
+    closeIfDrained(gen)
+  }
+
+  function closeIfDrained(gen: Generation): void {
+    if (gen.state !== 'draining' || gen.records.size > 0) return
+    gen.state = 'closed'
+    draining.delete(gen)
+    console.warn(`[pool] browser generation ${gen.id} drained -- closing it`)
+    void gen.process.close(cfg.browserCloseTimeoutMs)
   }
 
   async function closeContext(record: ContextRecord): Promise<void> {
@@ -287,6 +321,7 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
       // A draining or dead browser never hands a context out again.
       gen.records.delete(record)
       await closeContext(record)
+      closeIfDrained(gen)
       return
     }
 
@@ -326,12 +361,14 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
       // The generation stopped serving while the replacement was being made.
       gen.records.delete(returned)
       await closeContext(returned)
+      closeIfDrained(gen)
       return
     }
 
     const waiter = waiters.shift()
     if (waiter) waiter.resolve(returned)
     else gen.free.push(returned)
+    checkRecycle()
   }
 
   function makeLease(record: ContextRecord, deadline?: AbortSignal): Lease {
@@ -399,6 +436,9 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
     if (relaunching) return
     relaunching = true
     try {
+      // A recycle launching when the browser died will adopt the empty slot
+      // itself; wait for it rather than launching a second browser.
+      if (launchInFlight !== null) await launchInFlight
       while (!closed && serving === null) {
         try {
           const gen = await launchGeneration('crash')
@@ -431,10 +471,74 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
     }
   }
 
-  promote(await launchGeneration('startup'))
+  function recycleReason(gen: Generation): LaunchReason | null {
+    if (now() - gen.startedAt >= cfg.browserMaxAgeMs) return 'recycle_age'
+    if (gen.leases >= cfg.browserMaxLeases) return 'recycle_leases'
+    const limit = cfg.browserMaxMemoryMb * 1024 * 1024
+    if (limit > 0 && gen.memoryBytes !== null && gen.memoryBytes >= limit) return 'recycle_memory'
+    return null
+  }
+
+  // Checked at every release and on every tick. One recycle at a time, none
+  // while a relaunch is under way, and none inside a failed recycle's backoff.
+  function checkRecycle(): void {
+    if (closed || serving === null || relaunching || launchInFlight !== null) return
+    if (now() < nextRecycleAt) return
+    const reason = recycleReason(serving)
+    if (reason === null) return
+    const op = recycle(serving, reason)
+    launchInFlight = op
+    void op.finally(() => {
+      if (launchInFlight === op) launchInFlight = null
+    })
+  }
+
+  // Blue/green: the replacement is launched and filled before anything moves,
+  // so no caller ever waits on a recycle. A failed launch leaves the old
+  // browser serving -- it still works, which is the point -- and never
+  // escalates. Never rejects.
+  async function recycle(old: Generation, reason: LaunchReason): Promise<void> {
+    console.warn(`[pool] recycling browser generation ${old.id}: ${reason}`)
+    let gen: Generation
+    try {
+      gen = await launchGeneration(reason)
+    } catch (err) {
+      recycleFailures++
+      nextRecycleAt = now() + backoff(recycleFailures)
+      opts.observer?.launchFailed()
+      console.warn(`[pool] recycle launch failed; generation ${old.id} keeps serving: ${firstLine(err)}`)
+      return
+    }
+    recycleFailures = 0
+    nextRecycleAt = 0
+    // The old browser may have died while this one launched. If nothing serves
+    // now, this one does; if something else took over, this one is surplus.
+    if (closed || (serving !== old && serving !== null)) {
+      gen.state = 'closed'
+      await gen.process.close(cfg.browserCloseTimeoutMs)
+      return
+    }
+    promote(gen)
+  }
+
+  // Captured directly rather than re-read from `serving`: assignment to a
+  // closure-captured `let` through a function call (here, promote()) isn't
+  // tracked by the compiler's flow analysis, so re-reading `serving` right
+  // after this line type-checks as still possibly null.
+  const startupGen = await launchGeneration('startup')
+  promote(startupGen)
   failuresRemaining = opts.failNextContextCreations ?? 0
   closeHangsRemaining = opts.hangNextContextCloses ?? 0
   launchFailuresRemaining = opts.failNextLaunches ?? 0
+
+  const tick = setInterval(() => {
+    if (serving !== null) serving.memoryBytes = sampleMemory(serving)
+    checkRecycle()
+  }, cfg.browserCheckIntervalMs)
+  tick.unref()
+  if (startupGen.memoryBytes === null) {
+    console.warn('[pool] browser memory is not measurable here -- the memory recycle trigger is off')
+  }
 
   return {
     async acquire(deadline?: AbortSignal): Promise<Lease> {
@@ -497,13 +601,14 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
         leased,
         waiting: waiters.length,
         generations: { serving: serving === null ? 0 : 1, draining: draining.size },
-        browserAgeSeconds: serving === null ? null : (Date.now() - serving.startedAt) / 1000,
+        browserAgeSeconds: serving === null ? null : (now() - serving.startedAt) / 1000,
         browserMemoryBytes: serving?.memoryBytes ?? null,
       }
     },
 
     async close(): Promise<void> {
       closed = true
+      clearInterval(tick)
       // Nothing will ever release into a closing pool.
       while (waiters.length > 0) waiters.shift()!.reject(new PoolClosedError())
       const gens = [...(serving === null ? [] : [serving]), ...draining]
@@ -513,6 +618,8 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
       // Tears down contexts still out on unreleased leases too, so a leaked
       // lease cannot leak a Chromium process past shutdown.
       await Promise.all(gens.map((gen) => gen.process.close(cfg.browserCloseTimeoutMs)))
+      // A recycle mid-launch sees `closed` and closes what it launched.
+      if (launchInFlight !== null) await launchInFlight
     },
   }
 }
