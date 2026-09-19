@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll, vi } from 'vitest'
-import { createPool, BrowserUnavailableError, PoolOverloadedError, type LaunchEvent } from '../src/browser.js'
+import { createPool, BrowserUnavailableError, PoolOverloadedError, type LaunchEvent, type Lease } from '../src/browser.js'
 import { loadConfig } from '../src/config.js'
 
 const cfg = loadConfig({ POOL_SIZE: '2', CONTEXT_MAX_USES: '3' })
@@ -471,6 +471,188 @@ describe('createPool: a browser crash', () => {
       await held.release() // a late release from the dead browser is harmless
     } finally {
       await gPool.close()
+    }
+  }, 30_000)
+
+  // A listener on `lost` runs inside the pool's death handling. If the dead
+  // generation were still the serving one at that moment, an acquire() made
+  // there would be handed its free context -- on a browser that is gone.
+  it('never hands a caller acquiring from inside a lost listener a context on the dead browser', async () => {
+    const o = observed()
+    const dPool = await createPool(loadConfig({ POOL_SIZE: '2' }), { observer: o.observer })
+    try {
+      const held = await dPool.acquire()
+      const again: Promise<Lease>[] = []
+      held.lost.addEventListener('abort', () => { again.push(dPool.acquire()) })
+      process.kill(o.launches[0]!.pid, 'SIGKILL')
+      expect(await waitFor(() => again.length === 1, 5_000)).toBe(true)
+      const next = await settlesWithin(again[0]!, 15_000)
+      expect(next).not.toBe(TIMED_OUT)
+      if (next === TIMED_OUT) return
+      expect(next.page.context().browser()).not.toBe(held.page.context().browser())
+      await next.page.setContent('<h1>alive</h1>')
+      expect(await next.page.textContent('h1')).toBe('alive')
+      await next.release()
+      await held.release()
+    } finally {
+      await dPool.close()
+    }
+  }, 30_000)
+
+  it('does not let a relaunched browser outlive close()', async () => {
+    const o = observed()
+    const connected: number[] = []
+    let releaseFill = (): void => {}
+    const fillHeld = new Promise<void>((resolve) => { releaseFill = resolve })
+    const cPool = await createPool(loadConfig({ POOL_SIZE: '1' }), {
+      observer: o.observer,
+      // The relaunch is held between connect and fill until close() has
+      // started, so close() lands mid-launch every time.
+      afterConnect: (pid) => {
+        connected.push(pid)
+        if (connected.length === 2) return fillHeld
+      },
+    })
+    try {
+      process.kill(o.launches[0]!.pid, 'SIGKILL')
+      expect(await waitFor(() => connected.length === 2, 15_000)).toBe(true)
+      const closing = cPool.close()
+      releaseFill()
+      await closing
+      expect(isAlive(connected[1]!)).toBe(false)
+    } finally {
+      releaseFill()
+      await cPool.close()
+    }
+  }, 30_000)
+})
+
+/**
+ * An `afterConnect` hook that, once armed, SIGSTOPs the next browsers to
+ * connect: alive, connected, and answering nothing -- a wedged Chromium, the
+ * reviewer's probe made into a fixture. SIGKILL still reaps a stopped
+ * process, so the pool can kill it; `reap()` is the test's own safety net.
+ */
+function wedger() {
+  const stopped: number[] = []
+  let remaining = 0
+  return {
+    stopped,
+    arm: (n = Number.POSITIVE_INFINITY) => { remaining = n },
+    afterConnect: (pid: number) => {
+      if (remaining <= 0) return
+      remaining--
+      process.kill(pid, 'SIGSTOP')
+      stopped.push(pid)
+    },
+    reap: () => {
+      remaining = 0
+      for (const pid of stopped) {
+        try { process.kill(pid, 'SIGKILL') } catch { /* already gone */ }
+      }
+    },
+  }
+}
+
+// Final review, 2026-09-19: a Chromium that is alive but not answering held
+// the fill -- newContext, newPage, route -- forever. A relaunch never failed,
+// so it never escalated; a recycle never finished, so close() never did; and
+// at startup createPool() never resolved. A 503 forever without an exit.
+describe('createPool: a browser that is alive but not answering', () => {
+  it('kills a relaunch whose fill hangs, counts it as failed, retries, and gives up at the limit', async () => {
+    const o = observed()
+    const fatal = vi.fn()
+    const w = wedger()
+    const hPool = await createPool(
+      loadConfig({ POOL_SIZE: '1', BROWSER_MAX_RELAUNCH_FAILURES: '2', BROWSER_CLOSE_TIMEOUT_MS: '500' }),
+      { observer: o.observer, onFatal: fatal, afterConnect: w.afterConnect, fillTimeoutMs: 1_000, backoffBaseMs: 50 },
+    )
+    try {
+      w.arm()
+      process.kill(o.launches[0]!.pid, 'SIGKILL')
+      expect(await waitFor(() => fatal.mock.calls.length > 0, 20_000)).toBe(true)
+      expect(fatal).toHaveBeenCalledTimes(1)
+      expect(o.failures()).toBe(2)
+      // Retried: a second browser, not a second wait on the first.
+      expect(w.stopped).toHaveLength(2)
+      expect(o.launches.map((e) => e.reason)).toEqual(['startup'])
+      for (const pid of w.stopped) expect(await waitFor(() => !isAlive(pid), 2_000)).toBe(true)
+    } finally {
+      w.reap()
+      await hPool.close()
+    }
+  }, 40_000)
+
+  // index.ts's onFatal exits 1: reached during a clean shutdown, it would
+  // turn every deploy that caught a relaunch mid-launch into a failed exit.
+  it('neither counts nor escalates a relaunch that fails after close()', async () => {
+    const o = observed()
+    const fatal = vi.fn()
+    const w = wedger()
+    const cPool = await createPool(
+      loadConfig({ POOL_SIZE: '1', BROWSER_MAX_RELAUNCH_FAILURES: '1', BROWSER_CLOSE_TIMEOUT_MS: '500' }),
+      { observer: o.observer, onFatal: fatal, afterConnect: w.afterConnect, fillTimeoutMs: 1_000 },
+    )
+    try {
+      w.arm(1)
+      process.kill(o.launches[0]!.pid, 'SIGKILL')
+      expect(await waitFor(() => w.stopped.length === 1, 15_000)).toBe(true)
+      expect(await settlesWithin(cPool.close(), 10_000)).not.toBe(TIMED_OUT)
+      expect(fatal).not.toHaveBeenCalled()
+      expect(o.failures()).toBe(0)
+    } finally {
+      w.reap()
+      await cPool.close()
+    }
+  }, 30_000)
+
+  it('lets close() finish while a recycle launch is wedged, and leaves nothing of that launch alive', async () => {
+    let t = 0
+    const o = observed()
+    const w = wedger()
+    const rPool = await createPool(
+      loadConfig({
+        POOL_SIZE: '1',
+        BROWSER_MAX_AGE_MS: '60000',
+        BROWSER_CHECK_INTERVAL_MS: '50',
+        BROWSER_CLOSE_TIMEOUT_MS: '500',
+      }),
+      { observer: o.observer, now: () => t, afterConnect: w.afterConnect, fillTimeoutMs: 2_000 },
+    )
+    try {
+      w.arm(1)
+      t = 60_000
+      expect(await waitFor(() => w.stopped.length === 1, 15_000)).toBe(true)
+      expect(await settlesWithin(rPool.close(), 10_000)).not.toBe(TIMED_OUT)
+      expect(await waitFor(() => !isAlive(w.stopped[0]!), 2_000)).toBe(true)
+      expect(isAlive(o.launches[0]!.pid)).toBe(false)
+    } finally {
+      w.reap()
+      await rPool.close()
+    }
+  }, 40_000)
+
+  it('rejects createPool() rather than hanging when the startup browser is wedged', async () => {
+    const w = wedger()
+    w.arm(1)
+    try {
+      const outcome = await settlesWithin(
+        createPool(loadConfig({ POOL_SIZE: '1', BROWSER_CLOSE_TIMEOUT_MS: '500' }), {
+          afterConnect: w.afterConnect,
+          fillTimeoutMs: 1_000,
+        }).then(
+          async (p) => {
+            await p.close()
+            return 'resolved' as const
+          },
+          (e: unknown) => e,
+        ),
+        10_000,
+      )
+      expect(outcome).toBeInstanceOf(Error)
+      expect(await waitFor(() => !isAlive(w.stopped[0]!), 2_000)).toBe(true)
+    } finally {
+      w.reap()
     }
   }, 30_000)
 })

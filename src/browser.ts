@@ -112,6 +112,15 @@ type TestFaultHooks = {
   backoffBaseMs?: number
   /** Replaces the clock the age trigger reads. */
   now?: () => number
+  /**
+   * Called with each launched browser's pid once it is connected and before
+   * its contexts are made -- where a test can SIGSTOP it into the wedged but
+   * alive browser the fill bound exists for. Awaited, so a test can also hold
+   * the launch there while something else happens.
+   */
+  afterConnect?: (pid: number) => void | Promise<void>
+  /** Replaces FILL_TIMEOUT_MS. */
+  fillTimeoutMs?: number
 }
 
 export type PoolOptions = {
@@ -144,11 +153,23 @@ async function closeWithin(close: () => Promise<void>, ms: number): Promise<void
 
 const BACKOFF_BASE_MS = 1_000
 const BACKOFF_CAP_MS = 30_000
+// A fill of POOL_SIZE contexts takes well under a second. This bounds one
+// that has wedged; see fill().
+const FILL_TIMEOUT_MS = 30_000
 
-function sleep(ms: number): Promise<void> {
+/** Resolves after `ms`, or as soon as `wake` aborts. */
+function sleep(ms: number, wake?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
+    if (wake?.aborted) return resolve()
+    const done = (): void => {
+      clearTimeout(timer)
+      wake?.removeEventListener('abort', done)
+      resolve()
+    }
     // Unref'd so a pending backoff cannot hold the process open at shutdown.
-    setTimeout(resolve, ms).unref()
+    const timer = setTimeout(done, ms)
+    timer.unref()
+    wake?.addEventListener('abort', done, { once: true })
   })
 }
 
@@ -178,10 +199,17 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
   let closed = false
   let launchFailuresRemaining = 0
   let relaunching = false
+  // Kept so close() can wait for it: a relaunch mid-launch at close() would
+  // otherwise leave its Chromium running after close() had resolved.
+  let relaunchInFlight: Promise<void> | null = null
   let relaunchFailures = 0
+  // Aborted by close(), so a relaunch sleeping out its backoff wakes and
+  // stops rather than holding close() for up to BACKOFF_CAP_MS.
+  const shutdown = new AbortController()
   const onFatal =
     opts.onFatal ?? ((err: Error) => console.error(`[pool] giving up on the browser: ${firstLine(err)}`))
   const backoffBaseMs = opts.backoffBaseMs ?? BACKOFF_BASE_MS
+  const fillTimeoutMs = opts.fillTimeoutMs ?? FILL_TIMEOUT_MS
 
   function backoff(attempt: number): number {
     return Math.min(backoffBaseMs * 2 ** (attempt - 1), BACKOFF_CAP_MS)
@@ -234,19 +262,48 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
     }
     process.onDeath((cause) => onDeath(gen, cause))
     try {
-      for (let i = 0; i < cfg.poolSize; i++) gen.free.push(await createContext(gen))
+      await opts.afterConnect?.(process.pid)
+      await fill(gen)
       // A browser that died during the fill must not be promoted: nothing
       // would ever notice, since its death arrived while it was 'starting'.
       if (process.dead) throw new Error(`browser generation ${gen.id} died before it could serve`)
+      gen.memoryBytes = sampleMemory(gen)
+      // Inside the try: an observer that throws fails this launch, and its
+      // browser is closed here, rather than leaking a filled Chromium that
+      // nothing would ever serve from or close.
+      opts.observer?.launched({ reason, generation: gen.id, pid: process.pid })
     } catch (err) {
       gen.state = 'closed'
       await process.close(cfg.browserCloseTimeoutMs)
       throw err
     }
-    gen.memoryBytes = sampleMemory(gen)
-    opts.observer?.launched({ reason, generation: gen.id, pid: process.pid })
     console.warn(`[pool] browser generation ${gen.id} launched (pid ${process.pid}, ${reason})`)
     return gen
+  }
+
+  // launchServer() and connect() carry LAUNCH_TIMEOUT_MS, but newContext,
+  // newPage and route carry no timeout at all, and a Chromium that is alive
+  // but not answering holds them forever. Unbounded, that wedged every launch
+  // path at once: a relaunch never failed, so it never escalated; a recycle
+  // never finished, so close() never did; at startup createPool() never
+  // resolved. Past the bound the launch fails, and launchGeneration's close()
+  // SIGKILLs the browser, which rejects the calls still pending on it.
+  async function fill(gen: Generation): Promise<void> {
+    let timer: NodeJS.Timeout | undefined
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`browser generation ${gen.id} did not fill ${cfg.poolSize} context(s) within ${fillTimeoutMs}ms`))
+      }, fillTimeoutMs)
+      timer.unref()
+    })
+    const filling = (async () => {
+      for (let i = 0; i < cfg.poolSize; i++) gen.free.push(await createContext(gen))
+    })()
+    try {
+      await Promise.race([filling, timedOut])
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   function promote(gen: Generation): void {
@@ -420,16 +477,29 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
     console.warn(
       `[pool] browser generation ${gen.id} (pid ${gen.process.pid}) died (${cause}) while ${wasServing ? 'serving' : 'draining'}`,
     )
+    // Out of reach before anyone hears of the death: a `lost` listener runs
+    // synchronously inside the loop below, and one that acquires at once has
+    // to queue for the relaunch, not be handed a context on this browser.
+    gen.free = []
+    if (wasServing) serving = null
     const reason = new BrowserUnavailableError(`the browser died (${cause}) while this lookup was using it`)
     for (const record of gen.records) record.lost?.abort(reason)
     gen.records.clear()
-    gen.free = []
     // A dropped connection can leave the process itself running.
     void gen.process.close(cfg.browserCloseTimeoutMs)
-    if (wasServing) {
-      serving = null
-      void relaunch()
-    }
+    if (wasServing) startRelaunch()
+  }
+
+  function startRelaunch(): void {
+    if (relaunching) return
+    // relaunch() answers every launch failure itself. What reaches here is an
+    // observer or onFatal that threw: give up on it explicitly rather than
+    // leaving nothing serving behind an unhandled rejection.
+    relaunchInFlight = relaunch().catch((err: unknown) => {
+      const error = err instanceof Error ? err : new Error(String(err))
+      console.error(`[pool] relaunching stopped on an unexpected error: ${firstLine(error)}`)
+      onFatal(error)
+    })
   }
 
   // Keeps trying until something serves, backing off between failures. A
@@ -452,6 +522,9 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
           relaunchFailures = 0
           promote(gen)
         } catch (err) {
+          // close() ran during this launch. It is no failure of the browser,
+          // and onFatal must not exit a process that is shutting down cleanly.
+          if (closed) return
           const error = err instanceof Error ? err : new Error(String(err))
           relaunchFailures++
           opts.observer?.launchFailed()
@@ -466,7 +539,7 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
             onFatal(error)
             return
           }
-          await sleep(backoff(relaunchFailures))
+          await sleep(backoff(relaunchFailures), shutdown.signal)
         }
       }
     } finally {
@@ -524,10 +597,9 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
     promote(gen)
   }
 
-  // Captured directly rather than re-read from `serving`: assignment to a
-  // closure-captured `let` through a function call (here, promote()) isn't
-  // tracked by the compiler's flow analysis, so re-reading `serving` right
-  // after this line type-checks as still possibly null.
+  // Read below as `startupGen`, not `serving`: TypeScript narrows `serving`
+  // here to its `null` initializer, because it does not see promote()
+  // reassign it (microsoft/TypeScript#9998).
   const startupGen = await launchGeneration('startup')
   promote(startupGen)
   failuresRemaining = opts.failNextContextCreations ?? 0
@@ -628,6 +700,7 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
 
     async close(): Promise<void> {
       closed = true
+      shutdown.abort()
       clearInterval(tick)
       // Nothing will ever release into a closing pool.
       while (waiters.length > 0) waiters.shift()!.reject(new PoolClosedError())
@@ -638,8 +711,11 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
       // Tears down contexts still out on unreleased leases too, so a leaked
       // lease cannot leak a Chromium process past shutdown.
       await Promise.all(gens.map((gen) => gen.process.close(cfg.browserCloseTimeoutMs)))
-      // A recycle mid-launch sees `closed` and closes what it launched.
+      // A recycle or relaunch mid-launch sees `closed` and closes what it
+      // launched; wait for it, or its Chromium outlives close(). The fill
+      // bound is what makes this wait finite.
       if (launchInFlight !== null) await launchInFlight
+      if (relaunchInFlight !== null) await relaunchInFlight
     },
   }
 }
