@@ -800,15 +800,19 @@ describe('createPool: recycling the browser', () => {
     const o = observed()
     const mPool = await createPool(
       loadConfig({ POOL_SIZE: '1', BROWSER_MAX_MEMORY_MB: '100', BROWSER_CHECK_INTERVAL_MS: '50' }),
-      { observer: o.observer, memoryOf: () => bytes },
+      // Only the first browser grows: the replacement is sampled at launch,
+      // and a fake that reported 100 MB for it too could start a third.
+      { observer: o.observer, memoryOf: (pid) => (pid === o.launches[0]?.pid ? bytes : 1) },
     )
     try {
       await new Promise((r) => setTimeout(r, 300))
       expect(o.launches).toHaveLength(1) // under the limit
       bytes = 100 * 1024 * 1024
       expect(await waitFor(() => o.launches.length === 2, 15_000)).toBe(true)
-      bytes = 1 // or the new browser, measured by the same fake, recycles too
       expect(o.launches[1]!.reason).toBe('recycle_memory')
+      await new Promise((r) => setTimeout(r, 300))
+      expect(o.launches).toHaveLength(2) // the replacement is under the limit
+
     } finally {
       await mPool.close()
     }
@@ -820,7 +824,9 @@ describe('createPool: recycling the browser', () => {
     const fatal = vi.fn()
     const fPool = await createPool(
       loadConfig({ POOL_SIZE: '1', BROWSER_MAX_AGE_MS: '60000', BROWSER_CHECK_INTERVAL_MS: '50' }),
-      { observer: o.observer, now: () => t, failNextLaunches: 1, onFatal: fatal },
+      // Two injected failures: a retry that came too soon fails at once, on
+      // the next 50ms tick, rather than after a real launch's second or so.
+      { observer: o.observer, now: () => t, failNextLaunches: 2, onFatal: fatal },
     )
     try {
       t = 60_000
@@ -830,12 +836,83 @@ describe('createPool: recycling the browser', () => {
       expect(lease).not.toBe(TIMED_OUT)
       if (lease !== TIMED_OUT) await lease.release()
 
+      // Held inside the backoff: the trigger still holds and the tick keeps
+      // checking it, but nothing launches until the backoff has passed.
+      await new Promise((r) => setTimeout(r, 300))
+      expect(o.failures()).toBe(1)
+      expect(o.launches).toHaveLength(1)
+
+      t = 60_000 + 1_000 // past backoff(1): the second attempt, which fails too
+      expect(await waitFor(() => o.failures() === 2, 15_000)).toBe(true)
+
       // Past the backoff, the next attempt succeeds.
       t = 60_000 + 60_000
       expect(await waitFor(() => o.launches.length === 2, 15_000)).toBe(true)
       expect(fatal).not.toHaveBeenCalled()
     } finally {
       await fPool.close()
+    }
+  }, 60_000)
+
+  // A recycle already launching when the serving browser dies adopts the
+  // empty slot itself. A relaunch that did not wait for it would start a
+  // second browser, and one of the two would be thrown away.
+  it('lets a recycle already launching take over when the serving browser dies', async () => {
+    let t = 0
+    const o = observed()
+    const connected: number[] = []
+    const aPool = await createPool(
+      loadConfig({ POOL_SIZE: '2', BROWSER_MAX_AGE_MS: '60000', BROWSER_CHECK_INTERVAL_MS: '50' }),
+      {
+        observer: o.observer,
+        now: () => t,
+        // The recycle's browser is held between connect and fill until the
+        // pool has seen the serving one die, so the death lands mid-launch.
+        afterConnect: async (pid) => {
+          connected.push(pid)
+          if (connected.length !== 2) return
+          process.kill(o.launches[0]!.pid, 'SIGKILL')
+          await waitFor(() => aPool.stats().generations.serving === 0, 5_000)
+        },
+      },
+    )
+    try {
+      t = 60_000
+      expect(await waitFor(() => aPool.liveContexts() === 2 && o.launches.length === 2, 15_000)).toBe(true)
+      // Long enough for a second, surplus launch to have shown itself.
+      await new Promise((r) => setTimeout(r, 1_000))
+      expect(o.launches.map((e) => e.reason)).toEqual(['startup', 'recycle_age'])
+      expect(aPool.liveContexts()).toBe(2)
+      expect(aPool.stats().generations).toEqual({ serving: 1, draining: 0 })
+    } finally {
+      await aPool.close()
+    }
+  }, 60_000)
+
+  // Spec §2: in a draining generation nothing replaces a revoked context.
+  // Without releaseRecord's first non-serving branch, a lease ending there
+  // would open a fresh context on the draining browser only to close it
+  // again. The observable is that browser's own newContext().
+  it('opens no context in a draining browser when a lease ends there', async () => {
+    let t = 0
+    const dPool = await createPool(
+      loadConfig({ POOL_SIZE: '2', CONTEXT_MAX_USES: '1', BROWSER_MAX_AGE_MS: '60000', BROWSER_CHECK_INTERVAL_MS: '50' }),
+      { now: () => t },
+    )
+    try {
+      const deadline = new AbortController()
+      const revoked = await dPool.acquire(deadline.signal)
+      const spent = await dPool.acquire() // already at CONTEXT_MAX_USES
+      const newContext = vi.spyOn(spent.page.context().browser()!, 'newContext')
+      t = 60_000
+      expect(await waitFor(() => dPool.stats().generations.draining === 1, 15_000)).toBe(true)
+      deadline.abort(new Error('deadline (test)')) // revoked, into the draining generation
+      await spent.release() // at its use budget, into the draining generation
+      expect(await waitFor(() => dPool.stats().generations.draining === 0, 15_000)).toBe(true)
+      expect(newContext).not.toHaveBeenCalled()
+      await revoked.release() // a no-op: the pool already took it back
+    } finally {
+      await dPool.close()
     }
   }, 60_000)
 })

@@ -628,7 +628,13 @@ export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<P
       recycleFailures++
       nextRecycleAt = now() + backoff(recycleFailures)
       opts.observer?.launchFailed()
-      console.warn(`[pool] recycle launch failed; generation ${old.id} keeps serving: ${firstLine(err)}`)
+      // The old browser may have died while this one launched; then nothing
+      // is serving, and the relaunch waiting on this launch takes over.
+      console.warn(
+        serving === old
+          ? `[pool] recycle launch failed; generation ${old.id} keeps serving: ${firstLine(err)}`
+          : `[pool] recycle launch failed, and generation ${old.id} is no longer serving: ${firstLine(err)}`,
+      )
       return
     }
     recycleFailures = 0
