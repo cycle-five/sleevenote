@@ -1,5 +1,7 @@
 import { describe, it, expect, afterAll, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
+import { createServer, type Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import type { Page, Request } from 'playwright'
 import { createPool } from '../src/browser.js'
 import { loadConfig } from '../src/config.js'
@@ -14,6 +16,7 @@ import {
   NotFoundError,
   ExtractionEmptyError,
   ExtractionSilentError,
+  ExtractionTimeoutError,
 } from '../src/extract.js'
 import {
   PATHFINDER_URL,
@@ -1437,4 +1440,141 @@ describe('declaredTotalFrom', () => {
     expect(declaredTotalFrom('album', [], 'albumId')).toBeNull()
     expect(declaredTotalFrom('playlist', [], 'plId')).toBeNull()
   })
+})
+
+const TIMED_OUT = Symbol('timed out')
+
+/** `p`'s value if it settles within `ms`, else TIMED_OUT. Never rejects on `p`'s behalf. */
+async function settlesWithin<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<typeof TIMED_OUT>((r) => { timer = setTimeout(() => r(TIMED_OUT), ms) })
+  try {
+    return await Promise.race([p, timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// Production, 2026-09-19: see tests/browser.test.ts's "a lease past its
+// deadline". These are the extraction half -- the budget has to reach the
+// pool, and the two waits that had no bound of their own get one, so a stall
+// costs seconds instead of the whole budget.
+describe('extract: a stuck extraction', () => {
+  it('gives the context back when the budget runs out, not when the stuck work finishes', async () => {
+    // The page never issues the entity query, so the extraction sits in its
+    // entity-data wait for 8s. The budget is 1s.
+    const bCfg = loadConfig({ POOL_SIZE: '1', PRODUCE_BUDGET_MS: '1000', ENTITY_DATA_TIMEOUT_MS: '8000' })
+    const bPool = await createPool(bCfg)
+    try {
+      const page = await routedPage(bPool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>nothing yet</body></html>' }),
+      )
+      await expect(extract('track', 'stuckId', bPool, bCfg)).rejects.toThrow(ExtractionTimeoutError)
+
+      // Pool of one. Before the fix this waited out the rest of the 8s.
+      const next = await settlesWithin(bPool.acquire(), 2_000)
+      expect(next).not.toBe(TIMED_OUT)
+      if (next !== TIMED_OUT) await next.release()
+    } finally {
+      await bPool.close()
+    }
+  }, 30_000)
+
+  it('stops waiting on a JSON response whose body never finishes arriving', async () => {
+    // A real server: page.route can only fulfil a whole body, and the hang
+    // needs headers that arrive and a body that does not.
+    const server: Server = createServer((req, res) => {
+      if (req.url === '/page') {
+        res.writeHead(200, { 'content-type': 'text/html' })
+        // Both fetches start well after the page has gone network-idle, which
+        // is where production stalled: past `goto`, inside the body wait.
+        res.end(`<html><body><script>
+          setTimeout(() => fetch('/stall.json'), 1500);
+          setTimeout(() => fetch('${PATHFINDER_URL}', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'authorization': '${HARVEST_TOKEN}' },
+            body: JSON.stringify({
+              operationName: 'fetchPlaylistContents',
+              variables: { uri: 'spotify:playlist:stallId', offset: 0, limit: 25 },
+            }),
+          }), 1800);
+        </script></body></html>`)
+        return
+      }
+      if (req.url === '/stall.json') {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.write('{"never":') // ...and never another byte
+        return
+      }
+      res.writeHead(404).end()
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const port = (server.address() as AddressInfo).port
+
+    const sCfg = loadConfig({ POOL_SIZE: '1' })
+    const sPool = await createPool(sCfg)
+    try {
+      const lease = await sPool.acquire()
+      await routePathfinder(lease.page, (vars) =>
+        playlistPageResponse('stallId', { offset: vars.offset, limit: 25, itemCount: 25, totalCount: 25, entity: true }).body,
+      )
+      const capture = await settlesWithin(
+        // The entity wait has to outlast the 1.8s pathfinder fetch, or the
+        // capture never reaches the body wait at all and takes the scroll path.
+        recordResponses(lease.page, `http://127.0.0.1:${port}/page`, 'playlist', 'stallId', 10_000, 2_500),
+        10_000,
+      )
+      expect(capture).not.toBe(TIMED_OUT)
+      // What did arrive is kept: the stall costs a bounded wait, not the listing.
+      if (capture !== TIMED_OUT) expect(capture.responses.some((r) => r.url.startsWith(PATHFINDER_URL))).toBe(true)
+      await lease.release()
+    } finally {
+      await sPool.close()
+      server.closeAllConnections()
+      await new Promise((r) => server.close(r))
+    }
+  }, 30_000)
+
+  it('gives up on a pagination window that never answers, and serves the short listing', async () => {
+    const id = 'silentWindowId'
+    const wCfg = loadConfig({ POOL_SIZE: '1', ENTITY_DATA_TIMEOUT_MS: '500' })
+    const wPool = await createPool(wCfg)
+    try {
+      const page = await routedPage(wPool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({ status: 200, contentType: 'text/html', body: windowedQueryPage(id, 25) }),
+      )
+      await page.route(PATHFINDER_URL, (route) => {
+        const req = route.request()
+        if (req.method() === 'OPTIONS') {
+          return route.fulfill({
+            status: 204,
+            headers: {
+              'access-control-allow-origin': '*',
+              'access-control-allow-methods': 'POST, OPTIONS',
+              'access-control-allow-headers': req.headers()['access-control-request-headers'] ?? '*',
+            },
+          })
+        }
+        const { offset } = (req.postDataJSON() as { variables: { offset: number } }).variables
+        // The second window is never answered -- not refused, not failed.
+        if (offset > 0) return
+        return route.fulfill({
+          status: 200,
+          headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },
+          body: JSON.stringify(playlistPageResponse(id, { offset: 0, limit: 25, itemCount: 25, totalCount: 50, entity: true }).body),
+        })
+      })
+
+      const result = await settlesWithin(extract('playlist', id, wPool, wCfg), 15_000)
+      expect(result).not.toBe(TIMED_OUT)
+      if (result !== TIMED_OUT && result.type === 'playlist') {
+        expect(result.tracks).toHaveLength(25)
+        expect(result.complete).toBe(false)
+      }
+    } finally {
+      await wPool.close()
+    }
+  }, 30_000)
 })

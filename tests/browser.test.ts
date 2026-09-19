@@ -155,3 +155,130 @@ describe('createPool: a crashed page is recycled and stops counting as live imme
     }
   })
 })
+
+const TIMED_OUT = Symbol('timed out')
+
+/** `p`'s value if it settles within `ms`, else TIMED_OUT. Never rejects on `p`'s behalf. */
+async function settlesWithin<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<typeof TIMED_OUT>((r) => { timer = setTimeout(() => r(TIMED_OUT), ms) })
+  try {
+    return await Promise.race([p, timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// Production, 2026-09-19. A lookup that overran produceBudgetMs was answered
+// 504, but it kept its lease: the budget rejected the CALLER without stopping
+// the WORK, and the work never finished. Two of those, days apart, emptied a
+// pool of two, and every later request of every kind waited out the budget
+// and failed -- until a restart. /health said "ok" throughout. The holder
+// cannot be trusted to give a context back; the pool has to take it.
+describe('createPool: a lease past its deadline', () => {
+  it('takes the context back from a holder that never releases it, and stops the stuck work', async () => {
+    const dCfg = loadConfig({ POOL_SIZE: '1' })
+    const dPool = await createPool(dCfg)
+    try {
+      const lease = await dPool.acquire(AbortSignal.timeout(300))
+      // Stuck on the page forever -- the shape of the production hang.
+      const stuck = lease.page.evaluate(() => new Promise<never>(() => {})).then(
+        () => 'resolved' as const,
+        () => 'rejected' as const,
+      )
+
+      // Pool of one: only a slot the pool took back itself can serve this.
+      const next = await settlesWithin(dPool.acquire(), 5_000)
+      expect(next).not.toBe(TIMED_OUT)
+      if (next === TIMED_OUT) return
+      // The stuck work was stopped, not left running against a context the
+      // pool has already handed to someone else.
+      expect(await settlesWithin(stuck, 2_000)).toBe('rejected')
+      expect(dPool.liveContexts()).toBe(1)
+      await next.page.setContent('<h1>fresh</h1>')
+      expect(await next.page.textContent('h1')).toBe('fresh')
+
+      // The revoked holder releasing late must not free the slot a second time.
+      await lease.release()
+      const whileHeld = await settlesWithin(dPool.acquire(), 300)
+      expect(whileHeld).toBe(TIMED_OUT)
+      await next.release()
+    } finally {
+      await dPool.close()
+    }
+  }, 20_000)
+
+  it('drops a queued caller whose deadline passes, so the next free context goes to a live one', async () => {
+    const qCfg = loadConfig({ POOL_SIZE: '1' })
+    const qPool = await createPool(qCfg)
+    try {
+      const held = await qPool.acquire()
+      const expired = await settlesWithin(qPool.acquire(AbortSignal.timeout(200)).then(() => 'served', (e: unknown) => e), 2_000)
+      expect(expired).toBeInstanceOf(Error)
+      expect(qPool.stats().waiting).toBe(0)
+
+      const live = qPool.acquire()
+      await held.release()
+      // FIFO would hand the context to the expired caller ahead of this one,
+      // and nothing would ever release it.
+      const got = await settlesWithin(live, 2_000)
+      expect(got).not.toBe(TIMED_OUT)
+      if (got !== TIMED_OUT) await got.release()
+    } finally {
+      await qPool.close()
+    }
+  }, 20_000)
+
+  it('leaves alone a lease released before its deadline, even after that deadline passes', async () => {
+    const rCfg = loadConfig({ POOL_SIZE: '1' })
+    const rPool = await createPool(rCfg)
+    try {
+      const early = await rPool.acquire(AbortSignal.timeout(300))
+      await early.release()
+      // Pool of one: this is the same context, now someone else's.
+      const later = await rPool.acquire()
+      await new Promise((r) => setTimeout(r, 600))
+      expect(later.page.isClosed()).toBe(false)
+      await later.release()
+    } finally {
+      await rPool.close()
+    }
+  }, 20_000)
+
+  it('reports free, leased and waiting counts', async () => {
+    const sCfg = loadConfig({ POOL_SIZE: '2' })
+    const sPool = await createPool(sCfg)
+    try {
+      expect(sPool.stats()).toEqual({ free: 2, leased: 0, waiting: 0 })
+      const a = await sPool.acquire()
+      const b = await sPool.acquire()
+      const c = sPool.acquire()
+      expect(sPool.stats()).toEqual({ free: 0, leased: 2, waiting: 1 })
+      await a.release()
+      await (await c).release()
+      await b.release()
+      expect(sPool.stats()).toEqual({ free: 2, leased: 0, waiting: 0 })
+    } finally {
+      await sPool.close()
+    }
+  }, 20_000)
+})
+
+describe('createPool: a context close that never finishes', () => {
+  it('abandons the close after CONTEXT_CLOSE_TIMEOUT_MS and refills the slot', async () => {
+    const hCfg = loadConfig({ POOL_SIZE: '1', CONTEXT_MAX_USES: '1', CONTEXT_CLOSE_TIMEOUT_MS: '300' })
+    const hPool = await createPool(hCfg, { hangNextContextCloses: 1 })
+    try {
+      const lease = await hPool.acquire() // uses becomes 1 -- at budget, so release recycles
+      // Every close happens on a release path: an unbounded one would hold
+      // this release, and the slot, forever.
+      expect(await settlesWithin(lease.release(), 3_000)).not.toBe(TIMED_OUT)
+      expect(hPool.liveContexts()).toBe(1)
+      const next = await settlesWithin(hPool.acquire(), 2_000)
+      expect(next).not.toBe(TIMED_OUT)
+      if (next !== TIMED_OUT) await next.release()
+    } finally {
+      await hPool.close()
+    }
+  }, 20_000)
+})

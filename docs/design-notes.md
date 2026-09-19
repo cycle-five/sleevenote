@@ -335,7 +335,7 @@ cost.
 
 `acquire()` queues FIFO rather than rejecting when everything is busy: a third
 concurrent caller against a pool of two should wait its turn, not become a
-500.
+500. It waits only until its deadline, though (below).
 
 Contexts are recycled at release time, at `contextMaxUses` **or** when the
 page has closed. The use budget alone was not enough — a context whose
@@ -350,6 +350,58 @@ while every request against a crashed context failed.
 Contexts block `image`, `font` and `media`. The fixture corpus was recorded
 with exactly those blocked, so a pool serving unblocked pages would show
 production a different page than the normalizer was built against.
+
+### The pool owns the deadline, not the holder
+
+Until 0.4.1, `produceBudgetMs` only answered the caller. `withBudget` rejected
+on time, and its comment said the work "runs to completion in the background,
+including its own `lease.release()`, so the lease still returns to the pool."
+That assumed every step of an extraction ends eventually. One did not.
+`await Promise.all(bodies)` waited for every JSON body the page had started,
+and a body whose headers arrive but whose stream stalls leaves Playwright's
+`response.json()` pending for as long as the page lives.
+
+**Production, 2026-09-19.** Each such hang lost one context for good. The
+first was on 09-15; the service kept working on the other one. The second, at
+11:59, emptied the pool of two. From then on every request of every kind, a
+single track included, sat in `acquire()` until the budget ran out, and came
+back 504 after exactly 150 seconds. The container idled at about 1% CPU, and
+`/health` answered "ok" throughout, because a context held by a hung lease is
+still live. A restart fixed it at once. Across the container's lifetime the
+number of `ExtractionTimeoutError`s was exactly the number of contexts lost.
+
+Off-the-shelf pools were checked first. generic-pool and tarn bound acquire
+and destroy, but their evictors only touch *idle* resources, so neither can
+take one back from a borrower that hangs. Crawlee's browser-pool bounds its
+own operations; the per-request timeout lives in its crawler, not its pool.
+puppeteer-cluster has the right idea, closing the job's context when its
+timeout fires, but it is Puppeteer-only and makes a fresh context per job. So
+the pattern was adopted here rather than the dependency.
+
+**The pattern is cancellation by destroying what the work holds.** Playwright
+cannot abort an in-flight call, but closing a context rejects every call
+pending on it ("Target page, context or browser has been closed"). So
+`extract()` makes one `AbortSignal` from the budget and passes it to
+`acquire()`, and the pool uses it three ways:
+
+- **A queued caller whose deadline passes leaves the queue.** Left in it, it
+  would be handed the next free context after it had stopped listening, ahead
+  of a caller still waiting.
+- **A lease still held at the deadline is revoked.** The pool closes its
+  context and a fresh one takes the slot, *without waiting for the holder*.
+  The holder's pending calls reject, and its eventual `release()` is a no-op.
+  Revocation does not rely on the holder unwinding, because a holder can also
+  be waiting on a plain timer, which closing a page does not interrupt.
+- **A close gets `CONTEXT_CLOSE_TIMEOUT_MS`.** Every close is on a release
+  path, so a wedged renderer holding `close()` open would hold the slot the
+  same way. Past the limit, the context is abandoned and replaced.
+
+The budget remains a backstop. The steps that had no bound now have one: the
+body wait and each pagination window's in-page `fetch` both take
+`ENTITY_DATA_TIMEOUT_MS`. A stalled body now costs seconds and leaves the
+listing it did get, rather than costing the whole budget and the lease.
+`sleevenote_pool_contexts` and `sleevenote_pool_waiting` make a starved pool
+visible from outside.
 
 ## Redis client tuning
 

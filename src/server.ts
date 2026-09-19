@@ -19,7 +19,16 @@ import {
   ExtractionIncompleteError,
   ExtractionTimeoutError,
 } from './extract.js'
-import { cacheHits, scrapeDuration, scrapeFailures, extractionEmpty, partialListings, registry } from './metrics.js'
+import {
+  cacheHits,
+  scrapeDuration,
+  scrapeFailures,
+  extractionEmpty,
+  partialListings,
+  poolContexts,
+  poolWaiting,
+  registry,
+} from './metrics.js'
 
 export type ExtractFn = (
   kind: 'track' | 'album' | 'playlist',
@@ -385,6 +394,10 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   })
 
   fastify.get('/metrics', async (_req, reply) => {
+    const { free, leased, waiting } = pool.stats()
+    poolContexts.set({ state: 'free' }, free)
+    poolContexts.set({ state: 'leased' }, leased)
+    poolWaiting.set(waiting)
     reply.header('Content-Type', registry.contentType)
     return registry.metrics()
   })
