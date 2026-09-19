@@ -96,9 +96,10 @@ copy-pasteable version with fuller comments:
 | `REDIS_URL` | `redis://127.0.0.1:6379` | the only state this stateless service depends on |
 | `POOL_SIZE` | `2` | browser contexts kept warm; excess requests queue, they don't fail |
 | `CONTEXT_MAX_USES` | `50` | extractions served before a context is recycled |
+| `CONTEXT_CLOSE_TIMEOUT_MS` | `5000` | how long a context close may take before it is abandoned and the slot refilled. Every close is on a release path, so an unbounded one holds the slot |
 | `NAV_TIMEOUT_MS` | `45000` | cap on a single page navigation |
-| `ENTITY_DATA_TIMEOUT_MS` | `15000` | how long to wait for Spotify's entity query after the page looks settled. Deliberately far below `NAV_TIMEOUT_MS`: it covers the gap between "went idle" and "data arrived", so reusing the nav timeout would make every genuinely silent extraction cost 45s before it could say so |
-| `PRODUCE_BUDGET_MS` | `150000` | cap on one whole extraction; also sets the cache's single-flight lock TTL (see `src/config.ts`) |
+| `ENTITY_DATA_TIMEOUT_MS` | `15000` | how long to wait for Spotify's entity query after the page looks settled. Deliberately far below `NAV_TIMEOUT_MS`: it covers the gap between "went idle" and "data arrived", so reusing the nav timeout would make every genuinely silent extraction cost 45s before it could say so. Also bounds waiting for response bodies to finish arriving, and each pagination window |
+| `PRODUCE_BUDGET_MS` | `150000` | cap on one whole extraction, including the wait for a context; also sets the cache's single-flight lock TTL (see `src/config.ts`). Enforced by the pool: a lease still held when it runs out is revoked and its context replaced |
 | `TTL_TRACK` | `2592000` (30d) | track cache TTL, in seconds |
 | `TTL_ALBUM` | `2592000` (30d) | album cache TTL, in seconds |
 | `TTL_PLAYLIST` | `14400` (4h) | playlist cache TTL — playlists genuinely change |
@@ -130,6 +131,10 @@ release gate, in [docs/releasing.md](docs/releasing.md).
 
 A running instance reports its own build as
 `sleevenote_build_info{version="..."}` on `GET /metrics`.
+
+The browser pool's state is `sleevenote_pool_contexts{state="free"|"leased"}`
+and `sleevenote_pool_waiting`, read at scrape time. Every context leased with
+callers waiting is a starved pool.
 
 ## Testing
 

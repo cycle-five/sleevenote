@@ -3,9 +3,21 @@ import type { Config } from './config.js'
 
 export type Lease = { page: Page; release: () => Promise<void> }
 
+export type PoolStats = { free: number; leased: number; waiting: number }
+
 export interface Pool {
-  acquire(): Promise<Lease>
+  /**
+   * A free context, or a place in the queue for one.
+   *
+   * With `deadline`, the pool -- not the holder -- owns when the lease ends. A
+   * caller still queued when it fires is rejected and leaves the queue. A
+   * lease still held when it fires is revoked: its context is closed, which
+   * fails every Playwright call still pending on it, and a fresh context
+   * takes its slot. The holder's own `release()` is then a no-op.
+   */
+  acquire(deadline?: AbortSignal): Promise<Lease>
   liveContexts(): number
+  stats(): PoolStats
   close(): Promise<void>
 }
 
@@ -25,7 +37,25 @@ class PoolClosedError extends Error {
 // Test-only fault injection, not part of the Pool contract: `createPool(cfg)`
 // alone is the real signature. Lets tests reach the recycle-failure path
 // without exhausting real system resources.
-type TestFaultHooks = { failNextContextCreations?: number }
+type TestFaultHooks = { failNextContextCreations?: number; hangNextContextCloses?: number }
+
+/**
+ * Close `context`, but stop waiting after `ms`. A context whose renderer has
+ * wedged can hold `close()` open indefinitely, and the caller here is always a
+ * release: waiting on it would hold the slot exactly as a stuck holder did.
+ * The context is abandoned rather than awaited, and the pool replaces it.
+ */
+async function closeWithin(close: () => Promise<void>, ms: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined
+  const gaveUp = new Promise<'gave up'>((resolve) => {
+    timer = setTimeout(() => resolve('gave up'), ms)
+  })
+  const outcome = await Promise.race([close().then(() => 'closed' as const, () => 'closed' as const), gaveUp])
+  clearTimeout(timer)
+  if (outcome === 'gave up') {
+    console.warn(`[pool] a context did not close within ${ms}ms -- abandoning it and creating a replacement`)
+  }
+}
 
 /**
  * One browser backing `cfg.poolSize` reused contexts. `acquire()` hands out a
@@ -75,6 +105,7 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
     free.push(await createContext())
   }
   failuresRemaining = testHooks?.failNextContextCreations ?? 0
+  let closeHangsRemaining = testHooks?.hangNextContextCloses ?? 0
 
   // Recycling at release time bounds what a long-lived page accumulates.
   // `record` leaves `allRecords` up front because the old context is closed
@@ -83,7 +114,12 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
   // costing the pool a permanent slot.
   async function recycle(record: ContextRecord): Promise<ContextRecord> {
     allRecords.delete(record)
-    await record.context.close().catch(() => {})
+    let close = (): Promise<void> => record.context.close()
+    if (closeHangsRemaining > 0) {
+      closeHangsRemaining--
+      close = () => new Promise<void>(() => {}) // injected: a close that never finishes
+    }
+    await closeWithin(close, cfg.contextCloseTimeoutMs)
     try {
       return await createContext()
     } catch (err) {
@@ -98,7 +134,7 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
     }
   }
 
-  async function releaseRecord(record: ContextRecord): Promise<void> {
+  async function releaseRecord(record: ContextRecord, revoked = false): Promise<void> {
     // `closed` is createPool's own flag, declared above and closed over here
     // rather than passed in. True on entry means the pool shut down *before*
     // this release: browser.close() has already torn this context down, so
@@ -111,7 +147,11 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
       // Recycle on a crashed page as well as at the use budget: a dead
       // renderer would otherwise sit in `free` being handed out until it
       // happened to also reach `contextMaxUses`.
-      returned = record.uses >= cfg.contextMaxUses || record.page.isClosed() ? await recycle(record) : record
+      //
+      // And always on a revoked lease: its holder may still be running against
+      // this page, so the page must not go back out.
+      returned =
+        revoked || record.uses >= cfg.contextMaxUses || record.page.isClosed() ? await recycle(record) : record
     } catch (err) {
       if (closed) {
         // close() won a race with an in-flight recycle. It already rejected
@@ -143,29 +183,71 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
     }
   }
 
-  function makeLease(record: ContextRecord): Lease {
+  function makeLease(record: ContextRecord, deadline?: AbortSignal): Lease {
     record.uses++
-    // A double release must not free the record twice or resolve two waiters.
-    let released = false
+    // Whichever comes first, the holder's release() or the deadline, ends the
+    // lease; the other is a no-op. A double release must not free the record
+    // twice or resolve two waiters.
+    let ended = false
+    const revoke = (): void => {
+      if (ended) return
+      ended = true
+      // The holder is stuck or slow, and cannot be trusted to hand this back:
+      // on 2026-09-19 two holders never did, and a pool of two stayed empty
+      // until a restart. Take it. Closing the context is also what stops the
+      // holder -- every Playwright call it has pending rejects.
+      console.warn('[pool] a lease outlived its deadline -- closing its context and replacing it')
+      releaseRecord(record, true).catch((err: unknown) => {
+        console.warn(`[pool] replacing a revoked context failed: ${String(err)}`)
+      })
+    }
+    deadline?.addEventListener('abort', revoke, { once: true })
     return {
       page: record.page,
       release: async () => {
-        if (released) return
-        released = true
+        deadline?.removeEventListener('abort', revoke)
+        if (ended) return
+        ended = true
         await releaseRecord(record)
       },
     }
   }
 
   return {
-    async acquire(): Promise<Lease> {
+    async acquire(deadline?: AbortSignal): Promise<Lease> {
       if (closed) throw new Error('browser pool is closed')
+      deadline?.throwIfAborted()
       const record = free.shift()
-      if (record) return makeLease(record)
+      if (record) return makeLease(record, deadline)
       const queued = await new Promise<ContextRecord>((resolve, reject) => {
-        waiters.push({ resolve, reject })
+        // A caller whose deadline passes leaves the queue. Left in it, it
+        // would be handed the next free context after it had stopped
+        // listening, ahead of a caller that is still waiting.
+        const leave = (): void => {
+          const i = waiters.indexOf(waiter)
+          if (i !== -1) waiters.splice(i, 1)
+          reject(deadline?.reason)
+        }
+        const waiter = {
+          resolve: (r: ContextRecord) => {
+            deadline?.removeEventListener('abort', leave)
+            resolve(r)
+          },
+          reject: (err: Error) => {
+            deadline?.removeEventListener('abort', leave)
+            reject(err)
+          },
+        }
+        deadline?.addEventListener('abort', leave, { once: true })
+        waiters.push(waiter)
       })
-      return makeLease(queued)
+      if (deadline?.aborted) {
+        // Handed a context in the same tick the deadline fired. Nothing has
+        // touched it, so pass it on rather than revoking a good context.
+        await releaseRecord(queued)
+        throw deadline.reason
+      }
+      return makeLease(queued, deadline)
     },
 
     // Filtered by the same predicate `releaseRecord` recycles on. An unfiltered
@@ -177,6 +259,13 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
         if (!record.page.isClosed()) live++
       }
       return live
+    },
+
+    // Read at scrape time by /metrics. `leased` includes a record in transit
+    // to a waiter; a pool with every context leased and callers waiting is
+    // starved, which is what this exists to make visible.
+    stats(): PoolStats {
+      return { free: free.length, leased: allRecords.size - free.length, waiting: waiters.length }
     },
 
     async close(): Promise<void> {

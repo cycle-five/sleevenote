@@ -54,6 +54,23 @@ export const partialListings = new Counter({
  * running instance can be asked. `build_info` is the Prometheus convention: a
  * gauge fixed at 1 whose labels carry the payload.
  */
+// Set from `pool.stats()` at scrape time, never tracked incrementally, so
+// they cannot drift from the pool. `leased` at POOL_SIZE with `waiting` above
+// zero is a starved pool: on 2026-09-19 that state lasted over an hour while
+// /health answered "ok".
+export const poolContexts = new Gauge({
+  name: 'sleevenote_pool_contexts',
+  help: 'Browser contexts by state (free/leased), read from the pool at scrape time.',
+  labelNames: ['state'] as const,
+  registers: [registry],
+})
+
+export const poolWaiting = new Gauge({
+  name: 'sleevenote_pool_waiting',
+  help: 'Callers queued for a browser context, read from the pool at scrape time.',
+  registers: [registry],
+})
+
 export const buildInfo = new Gauge({
   name: 'sleevenote_build_info',
   help: 'Build metadata for the running instance. Always 1; read the labels.',

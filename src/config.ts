@@ -3,6 +3,7 @@ export type Config = {
   redisUrl: string
   poolSize: number
   contextMaxUses: number
+  contextCloseTimeoutMs: number
   navTimeoutMs: number
   produceBudgetMs: number
   failureRelayTtl: number
@@ -47,6 +48,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): Config {
     redisUrl: env.REDIS_URL ?? 'redis://127.0.0.1:6379',
     poolSize: num(env.POOL_SIZE, 2),
     contextMaxUses: num(env.CONTEXT_MAX_USES, 50),
+    // A context close that has not finished by then is abandoned and the slot
+    // refilled. Every close happens on a release path, so an unbounded one
+    // holds the slot exactly as a stuck holder does.
+    contextCloseTimeoutMs: num(env.CONTEXT_CLOSE_TIMEOUT_MS, 5_000),
     navTimeoutMs: num(env.NAV_TIMEOUT_MS, 45_000),
     produceBudgetMs: num(env.PRODUCE_BUDGET_MS, DEFAULT_PRODUCE_BUDGET_MS),
     // Seconds, not minutes: a handoff to the cohort already waiting, not a

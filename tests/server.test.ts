@@ -37,7 +37,12 @@ async function counterTotal(counter: CounterLike): Promise<number> {
 // Silent: buildServer now builds a real pino unless a logger is injected,
 // and an `info`-level suite floods stdout with a line per request.
 const cfg = loadConfig({ LOG_LEVEL: 'silent' })
-const fakePool = { acquire: async () => { throw new Error('unused') }, liveContexts: () => 1, close: async () => {} }
+const fakePool = {
+  acquire: async () => { throw new Error('unused') },
+  liveContexts: () => 1,
+  stats: () => ({ free: 0, leased: 2, waiting: 3 }),
+  close: async () => {},
+}
 
 function server(extract: any, store = new MemoryStore()) {
   return buildServer({ cfg, store, pool: fakePool as any, extract })
@@ -184,6 +189,17 @@ describe('GET /metrics', () => {
     const res = await app.inject({ method: 'GET', url: '/metrics' })
     expect(res.statusCode).toBe(200)
     expect(res.body).toContain('sleevenote_extraction_empty_total')
+  })
+
+  // A starved pool -- every context leased, callers queueing -- looked
+  // exactly like a healthy one from outside on 2026-09-19. These are read
+  // from the pool at scrape time, so they cannot drift from it.
+  it("exposes the pool's state as it is at scrape time", async () => {
+    const app = server(async () => TRACK)
+    const res = await app.inject({ method: 'GET', url: '/metrics' })
+    expect(res.body).toMatch(/sleevenote_pool_contexts\{state="free"\} 0/)
+    expect(res.body).toMatch(/sleevenote_pool_contexts\{state="leased"\} 2/)
+    expect(res.body).toMatch(/sleevenote_pool_waiting 3/)
   })
 })
 

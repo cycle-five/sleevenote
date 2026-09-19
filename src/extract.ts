@@ -184,6 +184,25 @@ function sleep(ms: number): Promise<void> {
   })
 }
 
+/**
+ * Wait for the body reads provoked so far, but not past `ms`. Resolves `true`
+ * when every one finished, `false` when it gave up.
+ *
+ * A response whose headers arrived and whose body never does leaves its read
+ * pending for as long as the page lives. An unbounded wait here held its
+ * lease with it: that is the hang behind the pool starvation of 2026-09-19.
+ * Whatever did arrive is already in `recorded`; the stragglers are abandoned.
+ */
+async function settleBodies(bodies: Promise<void>[], ms: number): Promise<boolean> {
+  return Promise.race([Promise.all(bodies).then(() => true), sleep(ms).then(() => false)])
+}
+
+function warnStragglers(kind: string, id: string, ms: number): void {
+  console.warn(
+    `[extract] ${kind} ${id}: response bodies still arriving after ${ms}ms -- continuing with what arrived`,
+  )
+}
+
 // Only reached when the harvested query carried no usable `limit` of its own,
 // which no observed query has done -- `isWindowedQuery` already demands an
 // `offset`, and every windowed query measured so far carried both. It stays a
@@ -325,7 +344,7 @@ export async function recordResponses(
       // right here. Reading the declared total off it without this wait finds
       // null, pages nothing, and produces the short listing this task exists
       // to eliminate, wearing pagination's clothes.
-      await Promise.all(bodies)
+      if (!(await settleBodies(bodies, entityDataTimeoutMs))) warnStragglers(kind, id, entityDataTimeoutMs)
       const total = declaredTotalFrom(kind, recorded, id)
 
       // Nothing declared a total, so `pageOffsets` asks for nothing and the
@@ -348,16 +367,23 @@ export async function recordResponses(
       for (const [i, offset] of offsets.entries()) {
         const next = withOffset(template, offset, limit)
         try {
-          await page.evaluate(async (req) => {
-            const res = await fetch(req.url, {
-              method: 'POST',
-              headers: req.headers,
-              body: JSON.stringify(req.body),
-            })
-            // Drain it in the page: Playwright can only hand us a body the
-            // browser actually finished receiving.
-            await res.text()
-          }, next)
+          await page.evaluate(
+            async ({ req, timeoutMs }) => {
+              const res = await fetch(req.url, {
+                method: 'POST',
+                headers: req.headers,
+                body: JSON.stringify(req.body),
+                // Nothing else bounds this: Playwright's evaluate has no
+                // timeout, and a window Spotify never answers would hold it,
+                // and the lease, forever. The signal also covers the body.
+                signal: AbortSignal.timeout(timeoutMs),
+              })
+              // Drain it in the page: Playwright can only hand us a body the
+              // browser actually finished receiving.
+              await res.text()
+            },
+            { req: next, timeoutMs: entityDataTimeoutMs },
+          )
         } catch (err) {
           // A window we could not fetch is a short listing, not a failed
           // extraction -- holding that distinction is the whole of Phase 1.
@@ -393,7 +419,7 @@ export async function recordResponses(
       // The final window's body is still crossing the wire when its
       // `page.evaluate` resolves. Dropping it would silently lose the last
       // page of every listing.
-      await Promise.all(bodies)
+      if (!(await settleBodies(bodies, entityDataTimeoutMs))) warnStragglers(kind, id, entityDataTimeoutMs)
     } else {
       // No query to repeat: fall back to provoking the page into fetching more
       // by scrolling. This is the degraded path -- undirected, and with no way
@@ -468,8 +494,9 @@ async function runExtraction(
   id: string,
   pool: Pool,
   cfg: Config,
+  deadline: AbortSignal,
 ): Promise<Track | Album | Playlist> {
-  const lease = await pool.acquire()
+  const lease = await pool.acquire(deadline)
   try {
     const capture = await recordResponses(
       lease.page,
@@ -518,33 +545,39 @@ async function runExtraction(
     // is not a partial listing, it is extraction that stopped matching.
     return result
   } finally {
-    // The pool cannot enforce this, so every path out -- including a throw
-    // above -- must release. A second release() is a documented no-op.
+    // Every path out -- including a throw above -- must release. The
+    // deadline covers the path that never gets out: by then the pool has
+    // revoked the lease, and this release() is a documented no-op.
     await lease.release()
   }
 }
 
 /**
- * Race `work` against `budgetMs`. On timeout the caller sees a rejection but
- * `work` is NOT cancelled -- Playwright offers no way to abort an in-flight
- * evaluate. It runs to completion in the background, including its own
- * `lease.release()`, so the lease still returns to the pool.
+ * Settle with `work`, or with ExtractionTimeoutError the moment `deadline`
+ * fires, whichever is first.
+ *
+ * This only answers the caller. Stopping the work is the pool's job: the same
+ * `deadline` revokes the lease, and closing its context is what fails the
+ * work's pending Playwright calls. Before that, this rejected on time and
+ * trusted the work to finish and release on its own -- and on 2026-09-19 two
+ * never did, which left a pool of two empty until a restart.
  *
  * A backstop against anomalies, not an everyday path: the constituent steps
  * are already bounded and sum to well under the default budget.
  */
-function withBudget<T>(work: Promise<T>, budgetMs: number): Promise<T> {
+function withBudget<T>(work: Promise<T>, deadline: AbortSignal, budgetMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
+    const expire = (): void => {
       reject(new ExtractionTimeoutError(`extraction exceeded produceBudgetMs (${budgetMs}ms)`))
-    }, budgetMs)
+    }
+    deadline.addEventListener('abort', expire, { once: true })
     work.then(
       (value) => {
-        clearTimeout(timer)
+        deadline.removeEventListener('abort', expire)
         resolve(value)
       },
       (err: unknown) => {
-        clearTimeout(timer)
+        deadline.removeEventListener('abort', expire)
         reject(err instanceof Error ? err : new Error(String(err)))
       },
     )
@@ -554,9 +587,9 @@ function withBudget<T>(work: Promise<T>, budgetMs: number): Promise<T> {
 /**
  * Resolve one Spotify entity to normalized metadata.
  *
- * `cfg.produceBudgetMs` bounds the whole call -- navigate, scroll and settle
- * together, not just navigation (`navTimeoutMs` is the narrower bound for
- * that). The cache's single-flight lock derives its TTL from the same number,
+ * `cfg.produceBudgetMs` bounds the whole call -- waiting for a context,
+ * navigate, scroll and settle together, not just navigation (`navTimeoutMs` is
+ * the narrower bound for that). The cache's single-flight lock derives its TTL from the same number,
  * so this enforces it as a real ceiling rather than trusting the steps to add
  * up.
  */
@@ -566,5 +599,8 @@ export async function extract(
   pool: Pool,
   cfg: Config,
 ): Promise<Track | Album | Playlist> {
-  return withBudget(runExtraction(kind, id, pool, cfg), cfg.produceBudgetMs)
+  // One deadline, three jobs: it bounds the wait for a context, it ends the
+  // lease, and it answers the caller.
+  const deadline = AbortSignal.timeout(cfg.produceBudgetMs)
+  return withBudget(runExtraction(kind, id, pool, cfg, deadline), deadline, cfg.produceBudgetMs)
 }
