@@ -178,9 +178,14 @@ is rejected with:
   because a relaunch is pending;
 - `PoolOverloadedError` otherwise.
 
-The deadline still applies, and whichever fires first wins. `loadConfig`
-**throws** if `POOL_WAIT_CAP_MS >= PRODUCE_BUDGET_MS`: the cap would never
-fire, and the misconfiguration would be silent.
+The deadline still applies, and whichever fires first wins.
+
+**Ruling: the default follows the budget.** Left unset, `POOL_WAIT_CAP_MS` is
+`min(20000, floor(PRODUCE_BUDGET_MS / 2))`. `loadConfig` **throws** only when
+the operator sets it explicitly at or above `PRODUCE_BUDGET_MS`: the cap would
+never fire, and that misconfiguration would otherwise be silent. A fixed
+default with the same check would break any deployment that shortened the
+budget without ever hearing of the cap (four existing tests do exactly that).
 
 **Ruling: 20 s.** Warm extractions take 4 to 8 s, so a caller behind two
 in-flight extractions on a pool of two is normally served well within it. A
@@ -223,7 +228,10 @@ Read from the manager at scrape time, as the 0.4.1 pool gauges are:
   when unmeasurable).
 
 Counted through an injected observer, so `browser.ts` does not import the
-metrics module:
+metrics module. `observer.launched({ reason, generation, pid })` carries the
+generation number and browser pid too: the pid is what a test SIGKILLs, and
+what an operator matches against `ps`. `observer.launchFailed()` counts a
+failed launch after startup:
 
 - `sleevenote_browser_launches_total{reason}`, where `reason` is one of
   `startup`, `recycle_age`, `recycle_leases`, `recycle_memory` or `crash`;
@@ -244,11 +252,14 @@ New knobs, all defaulted, all in the README table:
 | `BROWSER_CHECK_INTERVAL_MS` | `60000` |
 | `BROWSER_CLOSE_TIMEOUT_MS` | `10000` |
 | `BROWSER_MAX_RELAUNCH_FAILURES` | `5` |
-| `POOL_WAIT_CAP_MS` | `20000` (must be below `PRODUCE_BUDGET_MS`) |
+| `POOL_WAIT_CAP_MS` | `min(20000, PRODUCE_BUDGET_MS / 2)`; an explicit value must be below `PRODUCE_BUDGET_MS` |
 
 The backoff base (1 s) and cap (30 s) are constants. Tests reach them through
 the existing test-only fault hooks, which grow `failNextLaunches`,
-`backoffBaseMs` and `memoryReader`.
+`backoffBaseMs`, `memoryOf` (in place of the `/proc` reading) and `now` (a
+clock, so the age trigger is tested without waiting). Like the existing
+hooks, they ride in `createPool`'s second argument next to `onFatal` and
+`observer`, so `createPool(cfg)` stays the real signature.
 
 ## Testing
 
