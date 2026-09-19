@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { launchBrowserProcess, type DeathCause } from '../src/browser-process.js'
+import { createPool } from '../src/browser.js'
+import { loadConfig } from '../src/config.js'
 
 function isAlive(pid: number): boolean {
   try {
@@ -59,6 +61,27 @@ describe('launchBrowserProcess', () => {
     await bp.close(5_000)
     await new Promise((r) => setTimeout(r, 300))
     expect(causes).toEqual([])
+  }, 30_000)
+
+  // Final review, 2026-09-19: Playwright's own SIGTERM handler closed Chromium
+  // before index.ts's shutdown ran, so every `docker stop` read as a crash --
+  // a relaunch mid-drain, and in-flight lookups killed ahead of "close HTTP
+  // first". Here rather than in browser.test.ts: Playwright installs its
+  // handlers once, while any browser it launched is alive, and that file's
+  // module-level pool would already have installed them.
+  it('leaves the process signals to the service: createPool adds no SIGTERM, SIGINT or SIGHUP listener', async () => {
+    const signals = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const
+    const before = signals.map((s) => process.listenerCount(s))
+    const exitBefore = process.listenerCount('exit')
+    const pool = await createPool(loadConfig({ POOL_SIZE: '1' }))
+    try {
+      expect(signals.map((s) => process.listenerCount(s))).toEqual(before)
+      // Its `exit` handler stays: a Node that exits without close() still
+      // takes the browser with it.
+      expect(process.listenerCount('exit')).toBe(exitBefore + 1)
+    } finally {
+      await pool.close()
+    }
   }, 30_000)
 
   it('kills a browser whose graceful close never finishes', async () => {

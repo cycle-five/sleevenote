@@ -53,7 +53,17 @@ function sleep(ms: number): Promise<void> {
  * `connect()` over a loopback WebSocket.
  */
 export async function launchBrowserProcess(opts: LaunchOptions = {}): Promise<BrowserProcess> {
-  const server = await chromium.launchServer({ timeout: LAUNCH_TIMEOUT_MS })
+  // Shutdown is index.ts's to order: close HTTP, then the pool. Playwright's
+  // own SIGTERM/SIGINT/SIGHUP handlers ran first and closed Chromium under
+  // in-flight lookups, and the pool read that as a crash -- every deploy
+  // counted one and relaunched mid-drain. Its `exit` handler is installed
+  // regardless, so a Node that exits without close() still kills the browser.
+  const server = await chromium.launchServer({
+    timeout: LAUNCH_TIMEOUT_MS,
+    handleSIGINT: false,
+    handleSIGTERM: false,
+    handleSIGHUP: false,
+  })
   const child = server.process()
   const pid = child.pid
   if (pid === undefined) {
