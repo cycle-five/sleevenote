@@ -1,9 +1,39 @@
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import type { BrowserContext, Page } from 'playwright'
 import type { Config } from './config.js'
+import { launchBrowserProcess, type BrowserProcess } from './browser-process.js'
 
-export type Lease = { page: Page; release: () => Promise<void> }
+export type Lease = {
+  page: Page
+  release: () => Promise<void>
+  /**
+   * Aborted if this lease's browser dies while the lease is held, with the
+   * reason as its `reason`. A deadline revocation does not abort it: the
+   * caller has already been answered by then.
+   */
+  lost: AbortSignal
+}
 
-export type PoolStats = { free: number; leased: number; waiting: number }
+export type PoolStats = {
+  free: number
+  leased: number
+  waiting: number
+  generations: { serving: number; draining: number }
+  /** Age of the serving browser; null while none is serving. */
+  browserAgeSeconds: number | null
+  /** PSS of the serving browser's process tree at the last sample; null if unmeasurable. */
+  browserMemoryBytes: number | null
+}
+
+/** Why a browser generation was launched: the label on sleevenote_browser_launches_total. */
+export type LaunchReason = 'startup' | 'recycle_age' | 'recycle_leases' | 'recycle_memory' | 'crash'
+
+export type LaunchEvent = { reason: LaunchReason; generation: number; pid: number }
+
+/** Told about launches, so this module never imports the metrics registry. */
+export type PoolObserver = {
+  launched(event: LaunchEvent): void
+  launchFailed(): void
+}
 
 export interface Pool {
   /**
@@ -26,18 +56,53 @@ export interface Pool {
 // normalizer was built against.
 const BLOCKED_RESOURCE_TYPES = new Set(['image', 'font', 'media'])
 
-type ContextRecord = { context: BrowserContext; page: Page; uses: number }
+/**
+ * One browser process and the contexts made from it. Exactly one generation
+ * serves at a time; see
+ * docs/superpowers/specs/2026-09-19-browser-context-manager-design.md.
+ */
+type Generation = {
+  id: number
+  process: BrowserProcess
+  state: 'starting' | 'serving' | 'draining' | 'closed'
+  startedAt: number
+  /** Leases ever handed out from this generation. */
+  leases: number
+  /** Every context of this generation not yet closed, free or leased. */
+  records: Set<ContextRecord>
+  free: ContextRecord[]
+  /** The last sample of the process tree's memory; null if unmeasurable. */
+  memoryBytes: number | null
+}
 
-class PoolClosedError extends Error {
+type ContextRecord = {
+  context: BrowserContext
+  page: Page
+  uses: number
+  gen: Generation
+  /** The current lease's `lost` controller; null while the record is free. */
+  lost: AbortController | null
+}
+
+type Waiter = { resolve: (record: ContextRecord) => void; reject: (err: Error) => void }
+
+export class PoolClosedError extends Error {
   constructor() {
     super('browser pool closed while waiting for a free context')
   }
 }
 
 // Test-only fault injection, not part of the Pool contract: `createPool(cfg)`
-// alone is the real signature. Lets tests reach the recycle-failure path
-// without exhausting real system resources.
-type TestFaultHooks = { failNextContextCreations?: number; hangNextContextCloses?: number }
+// alone is the real signature. The hooks ride in the same options object as
+// the real ones, so every existing call site keeps working.
+type TestFaultHooks = {
+  failNextContextCreations?: number
+  hangNextContextCloses?: number
+  /** Replaces the `/proc` reading of a generation's memory. */
+  memoryOf?: (pid: number) => number | null
+}
+
+export type PoolOptions = { observer?: PoolObserver } & TestFaultHooks
 
 /**
  * Close `context`, but stop waiting after `ms`. A context whose renderer has
@@ -58,73 +123,104 @@ async function closeWithin(close: () => Promise<void>, ms: number): Promise<void
 }
 
 /**
- * One browser backing `cfg.poolSize` reused contexts. `acquire()` hands out a
- * free context or queues FIFO until one is released -- it never rejects for
- * lack of capacity, so a third caller against a pool of two waits its turn
- * rather than becoming a 500.
+ * Generations of browsers backing `cfg.poolSize` reused contexts each.
+ * `acquire()` hands out a free context from the serving generation, or queues
+ * FIFO until one is released.
  *
  * See docs/design-notes.md for why the pool is shaped this way.
  */
-export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promise<Pool> {
-  const browser: Browser = await chromium.launch()
-
-  // Every record the pool owns, in any state, so `liveContexts()` can check
-  // each page's real usability at call time. A renderer can die while its
-  // context sits idle in `free`, which a counter has no way to notice.
-  const allRecords = new Set<ContextRecord>()
-  // Armed only after the initial fill, so an injected failure exercises the
-  // recycle path rather than being consumed by warm-up.
+export async function createPool(cfg: Config, opts: PoolOptions = {}): Promise<Pool> {
+  // Armed only after the startup generation is filled, so an injected fault
+  // exercises the path under test rather than being consumed by warm-up.
   let failuresRemaining = 0
+  let closeHangsRemaining = 0
+  let nextGenerationId = 1
+  let serving: Generation | null = null
+  const draining = new Set<Generation>()
+  const waiters: Waiter[] = []
+  // Set once by close(); read by every inner function below via closure.
+  let closed = false
 
-  async function createContext(): Promise<ContextRecord> {
+  async function createContext(gen: Generation): Promise<ContextRecord> {
     if (failuresRemaining > 0) {
       failuresRemaining--
       throw new Error('injected context-creation failure (test)')
     }
-    const context = await browser.newContext()
+    const context = await gen.process.browser.newContext()
     const page = await context.newPage()
     await page.route('**/*', (route) => {
       const type = route.request().resourceType()
       if (BLOCKED_RESOURCE_TYPES.has(type)) return route.abort()
       return route.continue()
     })
-    const record: ContextRecord = { context, page, uses: 0 }
-    allRecords.add(record)
+    const record: ContextRecord = { context, page, uses: 0, gen, lost: null }
+    gen.records.add(record)
     return record
   }
 
-  // A record lives in exactly one of three places: `free`, inside a `Lease`
-  // closure, or mid-flight to a waiter. There is no separate "in use" flag to
-  // fall out of sync.
-  const free: ContextRecord[] = []
-  const waiters: Array<{ resolve: (record: ContextRecord) => void; reject: (err: Error) => void }> = []
-  // Set once by close(); read by every inner function below via closure.
-  let closed = false
-
-  for (let i = 0; i < cfg.poolSize; i++) {
-    free.push(await createContext())
+  function sampleMemory(gen: Generation): number | null {
+    return opts.memoryOf ? opts.memoryOf(gen.process.pid) : gen.process.memoryBytes()
   }
-  failuresRemaining = testHooks?.failNextContextCreations ?? 0
-  let closeHangsRemaining = testHooks?.hangNextContextCloses ?? 0
 
-  // Recycling at release time bounds what a long-lived page accumulates.
-  // `record` leaves `allRecords` up front because the old context is closed
-  // regardless; a successful `createContext()` puts its replacement back, so a
-  // clean recycle nets to zero. One retry absorbs a transient failure without
-  // costing the pool a permanent slot.
-  async function recycle(record: ContextRecord): Promise<ContextRecord> {
-    allRecords.delete(record)
+  // Launched and filled, but not yet serving: nothing hands out from a
+  // generation until promote() makes it the serving one.
+  async function launchGeneration(reason: LaunchReason): Promise<Generation> {
+    const process = await launchBrowserProcess()
+    const gen: Generation = {
+      id: nextGenerationId++,
+      process,
+      state: 'starting',
+      startedAt: Date.now(),
+      leases: 0,
+      records: new Set(),
+      free: [],
+      memoryBytes: null,
+    }
+    try {
+      for (let i = 0; i < cfg.poolSize; i++) gen.free.push(await createContext(gen))
+      // A browser that died during the fill must not be promoted: nothing
+      // would ever notice, since its death arrived while it was 'starting'.
+      if (process.dead) throw new Error(`browser generation ${gen.id} died before it could serve`)
+    } catch (err) {
+      gen.state = 'closed'
+      await process.close(cfg.browserCloseTimeoutMs)
+      throw err
+    }
+    gen.memoryBytes = sampleMemory(gen)
+    opts.observer?.launched({ reason, generation: gen.id, pid: process.pid })
+    console.warn(`[pool] browser generation ${gen.id} launched (pid ${process.pid}, ${reason})`)
+    return gen
+  }
+
+  function promote(gen: Generation): void {
+    gen.state = 'serving'
+    serving = gen
+    while (waiters.length > 0 && gen.free.length > 0) waiters.shift()!.resolve(gen.free.shift()!)
+  }
+
+  async function closeContext(record: ContextRecord): Promise<void> {
     let close = (): Promise<void> => record.context.close()
     if (closeHangsRemaining > 0) {
       closeHangsRemaining--
       close = () => new Promise<void>(() => {}) // injected: a close that never finishes
     }
     await closeWithin(close, cfg.contextCloseTimeoutMs)
+  }
+
+  // Replacing at release time bounds what a long-lived page accumulates.
+  // `record` leaves its generation up front because the old context is closed
+  // regardless; a successful `createContext()` puts its replacement back, so a
+  // clean replacement nets to zero. One retry absorbs a transient failure
+  // without costing the pool a permanent slot.
+  async function replaceContext(record: ContextRecord): Promise<ContextRecord> {
+    const gen = record.gen
+    gen.records.delete(record)
+    await closeContext(record)
     try {
-      return await createContext()
+      return await createContext(gen)
     } catch (err) {
       try {
-        return await createContext()
+        return await createContext(gen)
       } catch (retryErr) {
         throw new Error(
           `failed to create a replacement browser context after one retry: ${String(retryErr)}`,
@@ -135,30 +231,36 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
   }
 
   async function releaseRecord(record: ContextRecord, revoked = false): Promise<void> {
-    // `closed` is createPool's own flag, declared above and closed over here
-    // rather than passed in. True on entry means the pool shut down *before*
-    // this release: browser.close() has already torn this context down, so
-    // there is nothing to hand back. Shutdown racing an in-flight recycle is a
-    // different case, caught by the two `closed` checks further down.
+    record.lost = null
+    // True on entry means the pool shut down *before* this release: close()
+    // has already torn the browser down, so there is nothing to hand back.
     if (closed) return
+    const gen = record.gen
+
+    if (gen.state !== 'serving') {
+      // A draining or dead browser never hands a context out again.
+      gen.records.delete(record)
+      await closeContext(record)
+      return
+    }
 
     let returned: ContextRecord
     try {
-      // Recycle on a crashed page as well as at the use budget: a dead
+      // Replace on a crashed page as well as at the use budget: a dead
       // renderer would otherwise sit in `free` being handed out until it
       // happened to also reach `contextMaxUses`.
       //
       // And always on a revoked lease: its holder may still be running against
       // this page, so the page must not go back out.
       returned =
-        revoked || record.uses >= cfg.contextMaxUses || record.page.isClosed() ? await recycle(record) : record
+        revoked || record.uses >= cfg.contextMaxUses || record.page.isClosed()
+          ? await replaceContext(record)
+          : record
     } catch (err) {
-      if (closed) {
-        // close() won a race with an in-flight recycle. It already rejected
-        // every queued waiter and tore down the browser; a graceful shutdown
-        // must not surface as a release() failure.
-        return
-      }
+      // close() won a race with the replacement, or the browser went away
+      // under it. Either way a waiter will be served, or rejected, by what
+      // happens next -- there is nothing to strand here.
+      if (closed || gen.state !== 'serving') return
       // The old context is gone and its replacement could not be created. A
       // waiter queued for this slot would wait forever, so fail it with the
       // real cause rather than stranding it.
@@ -169,22 +271,28 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
     }
 
     if (closed) {
-      // close() ran during the recycle and knows nothing about the context it
-      // just produced. Nothing will ever read `free` again, so close it here.
+      // close() ran during the replacement and knows nothing about the context
+      // it just produced. Nothing will ever read `free` again, so close it.
       await returned.context.close().catch(() => {})
+      return
+    }
+    if (gen.state !== 'serving') {
+      // The generation stopped serving while the replacement was being made.
+      gen.records.delete(returned)
+      await closeContext(returned)
       return
     }
 
     const waiter = waiters.shift()
-    if (waiter) {
-      waiter.resolve(returned)
-    } else {
-      free.push(returned)
-    }
+    if (waiter) waiter.resolve(returned)
+    else gen.free.push(returned)
   }
 
   function makeLease(record: ContextRecord, deadline?: AbortSignal): Lease {
     record.uses++
+    record.gen.leases++
+    const lost = new AbortController()
+    record.lost = lost
     // Whichever comes first, the holder's release() or the deadline, ends the
     // lease; the other is a no-op. A double release must not free the record
     // twice or resolve two waiters.
@@ -196,7 +304,7 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
       // on 2026-09-19 two holders never did, and a pool of two stayed empty
       // until a restart. Take it. Closing the context is also what stops the
       // holder -- every Playwright call it has pending rejects.
-      console.warn('[pool] a lease outlived its deadline -- closing its context and replacing it')
+      console.warn('[pool] a lease outlived its deadline -- closing its context')
       releaseRecord(record, true).catch((err: unknown) => {
         console.warn(`[pool] replacing a revoked context failed: ${String(err)}`)
       })
@@ -204,6 +312,7 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
     deadline?.addEventListener('abort', revoke, { once: true })
     return {
       page: record.page,
+      lost: lost.signal,
       release: async () => {
         deadline?.removeEventListener('abort', revoke)
         if (ended) return
@@ -213,12 +322,16 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
     }
   }
 
+  promote(await launchGeneration('startup'))
+  failuresRemaining = opts.failNextContextCreations ?? 0
+  closeHangsRemaining = opts.hangNextContextCloses ?? 0
+
   return {
     async acquire(deadline?: AbortSignal): Promise<Lease> {
       if (closed) throw new Error('browser pool is closed')
       deadline?.throwIfAborted()
-      const record = free.shift()
-      if (record) return makeLease(record, deadline)
+      const ready = serving?.free.shift()
+      if (ready !== undefined) return makeLease(ready, deadline)
       const queued = await new Promise<ContextRecord>((resolve, reject) => {
         // A caller whose deadline passes leaves the queue. Left in it, it
         // would be handed the next free context after it had stopped
@@ -228,12 +341,12 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
           if (i !== -1) waiters.splice(i, 1)
           reject(deadline?.reason)
         }
-        const waiter = {
-          resolve: (r: ContextRecord) => {
+        const waiter: Waiter = {
+          resolve: (r) => {
             deadline?.removeEventListener('abort', leave)
             resolve(r)
           },
-          reject: (err: Error) => {
+          reject: (err) => {
             deadline?.removeEventListener('abort', leave)
             reject(err)
           },
@@ -250,34 +363,46 @@ export async function createPool(cfg: Config, testHooks?: TestFaultHooks): Promi
       return makeLease(queued, deadline)
     },
 
-    // Filtered by the same predicate `releaseRecord` recycles on. An unfiltered
-    // count is how `/health` kept answering "ok" while every request against a
-    // crashed context failed.
+    // The serving generation only, filtered by the same predicate
+    // `releaseRecord` replaces on. An unfiltered count is how `/health` kept
+    // answering "ok" while every request against a crashed context failed.
     liveContexts(): number {
+      if (serving === null) return 0
       let live = 0
-      for (const record of allRecords) {
+      for (const record of serving.records) {
         if (!record.page.isClosed()) live++
       }
       return live
     },
 
-    // Read at scrape time by /metrics. `leased` includes a record in transit
-    // to a waiter; a pool with every context leased and callers waiting is
-    // starved, which is what this exists to make visible.
+    // Read at scrape time by /metrics. Counted across every generation, so a
+    // lease still held by a draining browser shows up; `leased` includes a
+    // record in transit to a waiter.
     stats(): PoolStats {
-      return { free: free.length, leased: allRecords.size - free.length, waiting: waiters.length }
+      const gens = [...(serving === null ? [] : [serving]), ...draining]
+      let leased = 0
+      for (const gen of gens) leased += gen.records.size - gen.free.length
+      return {
+        free: serving?.free.length ?? 0,
+        leased,
+        waiting: waiters.length,
+        generations: { serving: serving === null ? 0 : 1, draining: draining.size },
+        browserAgeSeconds: serving === null ? null : (Date.now() - serving.startedAt) / 1000,
+        browserMemoryBytes: serving?.memoryBytes ?? null,
+      }
     },
 
     async close(): Promise<void> {
       closed = true
       // Nothing will ever release into a closing pool.
-      while (waiters.length > 0) {
-        waiters.shift()!.reject(new PoolClosedError())
-      }
+      while (waiters.length > 0) waiters.shift()!.reject(new PoolClosedError())
+      const gens = [...(serving === null ? [] : [serving]), ...draining]
+      serving = null
+      draining.clear()
+      for (const gen of gens) gen.state = 'closed'
       // Tears down contexts still out on unreleased leases too, so a leaked
       // lease cannot leak a Chromium process past shutdown.
-      await browser.close()
-      allRecords.clear()
+      await Promise.all(gens.map((gen) => gen.process.close(cfg.browserCloseTimeoutMs)))
     },
   }
 }

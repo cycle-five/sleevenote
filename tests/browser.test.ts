@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest'
-import { createPool } from '../src/browser.js'
+import { createPool, type LaunchEvent } from '../src/browser.js'
 import { loadConfig } from '../src/config.js'
 
 const cfg = loadConfig({ POOL_SIZE: '2', CONTEXT_MAX_USES: '3' })
@@ -249,15 +249,15 @@ describe('createPool: a lease past its deadline', () => {
     const sCfg = loadConfig({ POOL_SIZE: '2' })
     const sPool = await createPool(sCfg)
     try {
-      expect(sPool.stats()).toEqual({ free: 2, leased: 0, waiting: 0 })
+      expect(sPool.stats()).toMatchObject({ free: 2, leased: 0, waiting: 0 })
       const a = await sPool.acquire()
       const b = await sPool.acquire()
       const c = sPool.acquire()
-      expect(sPool.stats()).toEqual({ free: 0, leased: 2, waiting: 1 })
+      expect(sPool.stats()).toMatchObject({ free: 0, leased: 2, waiting: 1 })
       await a.release()
       await (await c).release()
       await b.release()
-      expect(sPool.stats()).toEqual({ free: 2, leased: 0, waiting: 0 })
+      expect(sPool.stats()).toMatchObject({ free: 2, leased: 0, waiting: 0 })
     } finally {
       await sPool.close()
     }
@@ -279,6 +279,49 @@ describe('createPool: a context close that never finishes', () => {
       if (next !== TIMED_OUT) await next.release()
     } finally {
       await hPool.close()
+    }
+  }, 20_000)
+})
+
+describe('createPool: browser generations', () => {
+  it('serves from one generation at startup, and says so', async () => {
+    const launches: LaunchEvent[] = []
+    const gPool = await createPool(loadConfig({ POOL_SIZE: '1' }), {
+      observer: { launched: (e) => { launches.push(e) }, launchFailed: () => {} },
+    })
+    try {
+      expect(launches).toHaveLength(1)
+      expect(launches[0]).toMatchObject({ reason: 'startup', generation: 1 })
+      expect(launches[0]!.pid).toBeGreaterThan(0)
+      const stats = gPool.stats()
+      expect(stats.generations).toEqual({ serving: 1, draining: 0 })
+      expect(stats.browserAgeSeconds).toBeGreaterThanOrEqual(0)
+      if (process.platform === 'linux') expect(stats.browserMemoryBytes).toBeGreaterThan(0)
+    } finally {
+      await gPool.close()
+    }
+    expect(gPool.stats().generations).toEqual({ serving: 0, draining: 0 })
+  }, 20_000)
+
+  it('gives every lease a lost signal that stays quiet when nothing goes wrong', async () => {
+    const lPool = await createPool(loadConfig({ POOL_SIZE: '1' }))
+    try {
+      const lease = await lPool.acquire()
+      expect(lease.lost).toBeInstanceOf(AbortSignal)
+      await lease.page.setContent('<h1>fine</h1>')
+      await lease.release()
+      expect(lease.lost.aborted).toBe(false)
+    } finally {
+      await lPool.close()
+    }
+  }, 20_000)
+
+  it('reports memory through the reader it is given', async () => {
+    const mPool = await createPool(loadConfig({ POOL_SIZE: '1' }), { memoryOf: () => 123_456 })
+    try {
+      expect(mPool.stats().browserMemoryBytes).toBe(123_456)
+    } finally {
+      await mPool.close()
     }
   }, 20_000)
 })
