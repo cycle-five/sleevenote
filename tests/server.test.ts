@@ -6,6 +6,7 @@ import {
   NotFoundError,
   ExtractionSilentError,
   ExtractionEmptyError,
+  ListingEmptyError,
   ExtractionIncompleteError,
   ExtractionTimeoutError,
 } from '../src/extract.js'
@@ -171,6 +172,32 @@ describe('GET /v1/track/:id', () => {
   it('maps ExtractionEmptyError to 502, not 404', async () => {
     const app = server(async () => { throw new ExtractionEmptyError('nothing') })
     expect((await app.inject({ method: 'GET', url: '/v1/playlist/abc' })).statusCode).toBe(502)
+  })
+
+  it('maps ListingEmptyError to 502 with its own code, not extraction_empty', async () => {
+    const app = server(async () => { throw new ListingEmptyError('Spotify served no items') })
+    const res = await app.inject({ method: 'GET', url: '/v1/playlist/abc' })
+    expect(res.statusCode).toBe(502)
+    // The code is the whole point: a caller has to be able to tell "this
+    // listing is empty" from "our extraction broke" to say the right thing.
+    expect(JSON.parse(res.body).error).toBe('listing_empty')
+  })
+
+  it('does NOT trip the redesign canary for a listing Spotify served empty', async () => {
+    const app = server(async () => { throw new ListingEmptyError('Spotify served no items') })
+    const before = {
+      empty: await counterValue(extractionEmpty),
+      listing: await counterValue(scrapeFailures, { reason: 'listing_empty' }),
+    }
+    await app.inject({ method: 'GET', url: '/v1/playlist/abc' })
+    const after = {
+      empty: await counterValue(extractionEmpty),
+      listing: await counterValue(scrapeFailures, { reason: 'listing_empty' }),
+    }
+    // An empty daylist used to raise the same alarm as a wholesale Spotify
+    // redesign, which is how the canary earns a reputation for crying wolf.
+    expect(after.empty).toBe(before.empty)
+    expect(after.listing).toBe(before.listing + 1)
   })
 
   it('serves stale with a header when a later scrape fails', async () => {

@@ -16,6 +16,7 @@ import {
   NotFoundError,
   ExtractionSilentError,
   ExtractionEmptyError,
+  ListingEmptyError,
   ExtractionIncompleteError,
   ExtractionTimeoutError,
 } from './extract.js'
@@ -68,6 +69,7 @@ type RelayedFailure =
   | { kind: 'not_found'; message: string }
   | { kind: 'extraction_silent'; message: string }
   | { kind: 'extraction_empty'; message: string }
+  | { kind: 'listing_empty'; message: string }
   | { kind: 'extraction_incomplete'; message: string }
   | { kind: 'timeout'; message: string }
   | { kind: 'store'; message: string }
@@ -80,6 +82,7 @@ function classifyFailure(err: unknown): RelayedFailure {
   if (err instanceof NotFoundError) return { kind: 'not_found', message }
   if (err instanceof ExtractionSilentError) return { kind: 'extraction_silent', message }
   if (err instanceof ExtractionEmptyError) return { kind: 'extraction_empty', message }
+  if (err instanceof ListingEmptyError) return { kind: 'listing_empty', message }
   if (err instanceof ExtractionIncompleteError) return { kind: 'extraction_incomplete', message }
   if (err instanceof ExtractionTimeoutError) return { kind: 'timeout', message }
   if (err instanceof StoreError) return { kind: 'store', message }
@@ -96,6 +99,8 @@ function reviveFailure(f: RelayedFailure): unknown {
       return new ExtractionSilentError(f.message)
     case 'extraction_empty':
       return new ExtractionEmptyError(f.message)
+    case 'listing_empty':
+      return new ListingEmptyError(f.message)
     case 'extraction_incomplete':
       return new ExtractionIncompleteError(f.message)
     case 'timeout':
@@ -153,6 +158,13 @@ function recordFailureMetrics(err: unknown): void {
     // The canary: what makes a Spotify redesign loud rather than silent.
     extractionEmpty.inc()
     scrapeFailures.inc({ reason: 'extraction_empty' })
+    return
+  }
+  if (err instanceof ListingEmptyError) {
+    // Counted, never canaried. An empty daylist is a routine fact about one
+    // id; ringing the redesign alarm for it is how the alarm stops meaning
+    // anything.
+    scrapeFailures.inc({ reason: 'listing_empty' })
     return
   }
   if (err instanceof ExtractionIncompleteError) {
@@ -377,6 +389,14 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       if (err instanceof ExtractionEmptyError) {
         reply.code(502)
         return { error: 'extraction_empty', id, message: err.message }
+      }
+      if (err instanceof ListingEmptyError) {
+        // Never negative-cached: a listing empty today can have items
+        // tomorrow, and a 30-day negative entry would outlive the fact.
+        // 502 is kept so no caller's status handling changes; the code is
+        // what carries the new distinction.
+        reply.code(502)
+        return { error: 'listing_empty', id, message: err.message }
       }
       if (err instanceof ExtractionIncompleteError) {
         // Never cached: produceAndCache only writes after produce() resolves.

@@ -156,8 +156,9 @@ export class NotFoundError extends ExtractionError {}
 /**
  * The page loaded, and we recognised nothing on it.
  *
- * Distinct from [`ExtractionEmptyError`], which found the entity and saw zero
- * items in it: this one found no entity at all, which points at a wholesale
+ * Distinct from [`ExtractionEmptyError`] and [`ListingEmptyError`], which
+ * found the entity and saw zero items in it: this one found no entity at
+ * all, which points at a wholesale
  * shape change rather than one broken list. It used to be reported as
  * [`NotFoundError`] -- a 404, negative-cached -- so a scraper that stopped
  * working looked exactly like a Spotify catalogue full of deleted entities,
@@ -165,7 +166,32 @@ export class NotFoundError extends ExtractionError {}
  */
 export class ExtractionSilentError extends ExtractionError {}
 
+/**
+ * Spotify declared items it could not parse: the entity matched, the item
+ * shape did not. This is the redesign canary, and the ONLY zero-track case
+ * that is our fault -- see [`ListingEmptyError`] for the other one.
+ */
 export class ExtractionEmptyError extends ExtractionError {}
+
+/**
+ * The listing is real and has nothing in it that Spotify will show us.
+ *
+ * Split out of [`ExtractionEmptyError`] on 2026-09-22. Both arrive as a
+ * parsed entity with zero tracks, and merging them cost a night of
+ * debugging: a Spotify "daylist" (`37i9dQZF1EP6YuccBxUcC1`) returned
+ * `extraction_empty`, whose message says extraction stopped matching, and
+ * cracktunes relayed that to the user as "Spotify lookup is broken". Nothing
+ * was broken -- Spotify's own oEmbed served that id a `trackList` of zero
+ * entries too, because its contents exist only for the signed-in owner.
+ *
+ * The tell is Spotify's declared total, the only figure here that speaks for
+ * the page rather than for our parser: a declared count we recognised none of
+ * means our parsing broke; no declared items at all means there was nothing
+ * to parse. Reaching either branch already proves extraction still matches
+ * the ENTITY, because `normalizeByKind` returns null otherwise and that
+ * throws [`ExtractionSilentError`] well before here.
+ */
+export class ListingEmptyError extends ExtractionError {}
 
 // A partial recovery that still returns *some* tracks, which a bare
 // `tracks.length === 0` check cannot see.
@@ -582,10 +608,22 @@ async function runExtraction(
       )
     }
     // Navigated fine but zero tracks is not a 404 -- normalizeByKind returns
-    // null for that. It means extraction stopped matching Spotify's page.
+    // null for that. Which of the two zero-track failures it is turns on
+    // Spotify's declared total; see ListingEmptyError for why they are
+    // separate and what merging them cost.
     if ((result.type === 'album' || result.type === 'playlist') && result.tracks.length === 0) {
-      throw new ExtractionEmptyError(
-        `${kind} ${id} navigated successfully but yielded zero tracks -- extraction likely stopped matching Spotify's page`,
+      const declared = result.declaredItems
+      if (declared !== null && declared > 0) {
+        throw new ExtractionEmptyError(
+          `${kind} ${id} declares ${declared} item${declared === 1 ? '' : 's'} and extraction recognised none of them ` +
+            `-- extraction has stopped matching Spotify's item shape`,
+          evidenceFrom(capture),
+        )
+      }
+      throw new ListingEmptyError(
+        `${kind} ${id} has no items Spotify will show us -- it declared ` +
+          `${declared === null ? 'no total at all' : '0 items'}, so there was nothing to extract. ` +
+          `A personalised listing (a daylist, a private or a regional one) reads exactly like this to a signed-out viewer`,
         evidenceFrom(capture),
       )
     }
