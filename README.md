@@ -34,6 +34,15 @@ has no listing to be partial. See
 for why the default stays strict and why the flag is per-request rather than
 a server setting.
 
+A listing that Spotify serves with nothing in it answers **502**
+`listing_empty`, which is a fact about that id rather than a fault: Spotify
+declared no items, so there were none to extract. Personalised listings read
+this way to a signed-out viewer -- a "daylist" is the common case, and its
+shareable link (the one with `?si=`) resolves normally. This is deliberately
+NOT `extraction_empty`, which now means only that Spotify declared items we
+recognised none of -- a genuine sign that extraction has stopped matching
+Spotify's item shape, and the one that trips the redesign canary metric.
+
 When sleevenote cannot take a lookup on, it answers **503** with
 `Retry-After: 5` rather than making the caller wait: `overloaded` when every
 browser context stayed busy for `POOL_WAIT_CAP_MS`, and `browser_unavailable`

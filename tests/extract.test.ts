@@ -15,6 +15,7 @@ import {
   MAX_PAGES,
   NotFoundError,
   ExtractionEmptyError,
+  ListingEmptyError,
   ExtractionSilentError,
   ExtractionTimeoutError,
 } from '../src/extract.js'
@@ -583,7 +584,61 @@ describe('extract', () => {
     }
   }, 20_000)
 
-  it('throws ExtractionEmptyError, not NotFoundError, and still releases the lease, on a zero-track playlist', async () => {
+  it('throws ExtractionEmptyError when Spotify declares items we parsed none of', async () => {
+    const eCfg = loadConfig({ POOL_SIZE: '1' })
+    const ePool = await createPool(eCfg)
+    try {
+      const id = 'brokenItemShapeId'
+      const page = await routedPage(ePool)
+      await page.route('https://open.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'text/html',
+          body: `<html><body><script>fetch('https://api-partner.spotify.com/pathfinder/v2/query')</script></body></html>`,
+        }),
+      )
+      await page.route('https://api-partner.spotify.com/**', (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            data: {
+              playlistV2: {
+                __typename: 'Playlist',
+                name: 'Fifty Tracks We Cannot Read',
+                uri: `spotify:playlist:${id}`,
+                ownerV2: { data: { name: 'Spotify' } },
+                images: { items: [] },
+                // Spotify says fifty. We parsed none. THAT is extraction
+                // having stopped matching the item shape, and it is the only
+                // shape that should trip the redesign canary.
+                content: {
+                  totalCount: 50,
+                  pagingInfo: { limit: 25, offset: 0 },
+                  items: [],
+                },
+              },
+            },
+          }),
+        }),
+      )
+
+      let caught: unknown
+      try {
+        await extract('playlist', id, ePool, eCfg)
+      } catch (err) {
+        caught = err
+      }
+      expect(caught).toBeInstanceOf(ExtractionEmptyError)
+      expect(caught).not.toBeInstanceOf(ListingEmptyError)
+      // The count is the evidence, so the message has to carry it.
+      expect((caught as Error).message).toContain('50')
+    } finally {
+      await ePool.close()
+    }
+  })
+
+  it('throws ListingEmptyError, not NotFoundError, and still releases the lease, when Spotify declares zero items', async () => {
     const eCfg = loadConfig({ POOL_SIZE: '1' })
     const ePool = await createPool(eCfg)
     try {
@@ -622,14 +677,19 @@ describe('extract', () => {
       // This is the whole point of the distinct error: the playlist is real
       // (name/uri matched), navigation succeeded, and the response we
       // parsed says zero tracks -- that must not surface as "not found".
+      //
+      // Spotify declared totalCount: 0, so it is not extraction that failed --
+      // there was nothing to extract. That is ListingEmptyError, not
+      // ExtractionEmptyError, whose message blames our own parsing.
       let caught: unknown
       try {
         await extract('playlist', id, ePool, eCfg)
       } catch (err) {
         caught = err
       }
-      expect(caught).toBeInstanceOf(ExtractionEmptyError)
+      expect(caught).toBeInstanceOf(ListingEmptyError)
       expect(caught).not.toBeInstanceOf(NotFoundError)
+      expect((caught as Error).message).not.toContain('stopped matching')
 
       let acquired = false
       const reacquire = ePool.acquire().then((l) => { acquired = true; return l })
